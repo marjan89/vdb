@@ -42,15 +42,20 @@ pub fn run(args: OverlayArgs) -> Result<(), String> {
     let font = FontRef::try_from_slice(FONT_BYTES)
         .map_err(|e| format!("font error: {e}"))?;
 
-    // Auto-detect density from screenshot width vs schema viewport
     let density = args.density.unwrap_or_else(|| {
-        let max_x = schema.elements.iter()
-            .map(|e| (e.bounds.x + e.bounds.w) as f64)
-            .fold(0.0f64, f64::max);
-        if max_x > 0.0 {
-            img_w as f64 / max_x
+        if let Some(ref vp) = schema.viewport {
+            if vp.density > 0.0 {
+                eprintln!("density: {:.3} (from YAML viewport)", vp.density);
+                return vp.density;
+            }
+        }
+        let root_w = schema.elements.first().map(|e| e.bounds.w as f64).unwrap_or(0.0);
+        if root_w > 100.0 {
+            let d = img_w as f64 / root_w;
+            eprintln!("density: {:.3} (from root element)", d);
+            d
         } else {
-            2.8 // fallback
+            3.0
         }
     });
 
