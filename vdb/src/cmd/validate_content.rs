@@ -34,6 +34,7 @@ struct A11yElement {
     y: i32,
     w: i32,
     h: i32,
+    visible: bool,
 }
 
 pub fn run(args: ValidateContentArgs) -> Result<(), String> {
@@ -64,10 +65,18 @@ pub fn run(args: ValidateContentArgs) -> Result<(), String> {
         .map(|v| v.density)
         .unwrap_or(3.0);
 
+    let is_wda = dump_str.contains("XCUIElementType");
+    let coord_scale = if is_wda { 1.0 } else { density };
+
     if args.exclude_offscreen {
-        let max_px_x = (viewport_w as f64 * density) as i32;
-        let max_px_y = (viewport_h as f64 * density) as i32;
-        a11y_elements.retain(|e| e.x >= 0 && e.y >= 0 && e.x < max_px_x && e.y < max_px_y);
+        let max_x = (viewport_w as f64 * coord_scale) as i32;
+        let max_y = (viewport_h as f64 * coord_scale) as i32;
+        a11y_elements.retain(|e| {
+            if !e.visible {
+                return false;
+            }
+            e.x >= 0 && e.y >= 0 && e.x < max_x && e.y < max_y
+        });
     }
 
     if args.exclude_external {
@@ -78,10 +87,10 @@ pub fn run(args: ValidateContentArgs) -> Result<(), String> {
             .map(|e| {
                 let b = &e.bounds;
                 (
-                    (b.x as f64 * density) as i32,
-                    (b.y as f64 * density) as i32,
-                    ((b.x + b.w) as f64 * density) as i32,
-                    ((b.y + b.h) as f64 * density) as i32,
+                    (b.x as f64 * coord_scale) as i32,
+                    (b.y as f64 * coord_scale) as i32,
+                    ((b.x + b.w) as f64 * coord_scale) as i32,
+                    ((b.y + b.h) as f64 * coord_scale) as i32,
                 )
             })
             .collect();
@@ -283,6 +292,9 @@ fn parse_uiautomator_xml(xml: &str) -> Result<Vec<A11yElement>, String> {
             };
 
             let (x, y, w, h) = parse_bounds_from_node(node_str);
+            let visible = extract_attr(node_str, "visible")
+                .map(|v| v != "false")
+                .unwrap_or(true);
             elements.push(A11yElement {
                 text: label,
                 class,
@@ -290,6 +302,7 @@ fn parse_uiautomator_xml(xml: &str) -> Result<Vec<A11yElement>, String> {
                 y,
                 w,
                 h,
+                visible,
             });
             pos = end + 1;
         } else {
@@ -363,6 +376,7 @@ fn collect_wda_elements(value: &serde_json::Value, out: &mut Vec<A11yElement>) {
             let y = obj.get("y").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
             let w = obj.get("width").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
             let h = obj.get("height").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+            let visible = obj.get("visible").and_then(|v| v.as_bool()).unwrap_or(true);
             out.push(A11yElement {
                 text: label,
                 class: elem_type,
@@ -370,6 +384,7 @@ fn collect_wda_elements(value: &serde_json::Value, out: &mut Vec<A11yElement>) {
                 y,
                 w,
                 h,
+                visible,
             });
         }
 
