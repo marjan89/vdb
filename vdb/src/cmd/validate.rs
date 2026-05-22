@@ -160,6 +160,12 @@ pub fn run(args: ValidateArgs) -> Result<(), String> {
             continue;
         }
 
+        if elem.bounds.w < 20 || elem.bounds.h < 20 {
+            println!("  {:30} SKIP (too small {}x{}dp)", display_id, elem.bounds.w, elem.bounds.h);
+            pass_count += 1;
+            continue;
+        }
+
         // Compute occlusion from ALL higher-z elements (including containers)
         let visible = visible_fraction_all(elem, &all_elements);
 
