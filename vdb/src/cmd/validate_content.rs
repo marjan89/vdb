@@ -132,40 +132,51 @@ fn normalize(s: &str) -> String {
 
 fn parse_uiautomator_xml(xml: &str) -> Result<Vec<A11yElement>, String> {
     let mut elements = Vec::new();
+    let mut pos = 0;
+    let bytes = xml.as_bytes();
 
-    for line in xml.lines() {
-        let trimmed = line.trim();
-        if !trimmed.contains("text=\"") {
-            continue;
-        }
+    while pos < bytes.len() {
+        if let Some(start) = xml[pos..].find("<node ") {
+            let abs_start = pos + start;
+            let node_end = xml[abs_start..].find('>').map(|e| abs_start + e);
+            let Some(end) = node_end else {
+                pos = abs_start + 1;
+                continue;
+            };
+            let node_str = &xml[abs_start..=end];
 
-        let text = extract_attr(trimmed, "text").unwrap_or_default();
-        let content_desc = extract_attr(trimmed, "content-desc").unwrap_or_default();
-        let class = extract_attr(trimmed, "class").unwrap_or_default();
-        let bounds = extract_attr(trimmed, "bounds").unwrap_or_default();
+            let text = extract_attr(node_str, "text").unwrap_or_default();
+            let content_desc = extract_attr(node_str, "content-desc").unwrap_or_default();
+            let class = extract_attr(node_str, "class").unwrap_or_default();
+            let bounds = extract_attr(node_str, "bounds").unwrap_or_default();
 
-        let label = if !text.is_empty() {
-            text
-        } else if !content_desc.is_empty() {
-            content_desc
+            let label = if !text.is_empty() {
+                text
+            } else if !content_desc.is_empty() {
+                content_desc
+            } else {
+                pos = end + 1;
+                continue;
+            };
+
+            elements.push(A11yElement {
+                text: label,
+                class,
+                bounds,
+            });
+            pos = end + 1;
         } else {
-            continue;
-        };
-
-        elements.push(A11yElement {
-            text: label,
-            class,
-            bounds,
-        });
+            break;
+        }
     }
 
     Ok(elements)
 }
 
-fn extract_attr(line: &str, attr: &str) -> Option<String> {
-    let pattern = format!("{}=\"", attr);
-    let start = line.find(&pattern)? + pattern.len();
-    let rest = &line[start..];
+fn extract_attr(node: &str, attr: &str) -> Option<String> {
+    let pattern = format!(" {}=\"", attr);
+    let start = node.find(&pattern)? + pattern.len();
+    let rest = &node[start..];
     let end = rest.find('"')?;
     Some(rest[..end].to_string())
 }
