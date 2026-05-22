@@ -165,6 +165,26 @@ pub fn run(args: DiffArgs) -> Result<(), String> {
             }
         }
 
+        // Line count
+        if let (Some(sl), Some(tl)) = (m.src.line_count, m.tgt.line_count) {
+            if sl != tl {
+                warnings.push(format!(
+                    "WRONG_LINE_COUNT: {} — {}:{} {}:{}",
+                    id, src.platform, sl, tgt.platform, tl
+                ));
+            }
+        }
+
+        // Truncated
+        if let (Some(st), Some(tt)) = (m.src.truncated, m.tgt.truncated) {
+            if st != tt {
+                warnings.push(format!(
+                    "WRONG_TRUNCATED: {} — {}:{} {}:{}",
+                    id, src.platform, st, tgt.platform, tt
+                ));
+            }
+        }
+
         // Corner radius
         if let (Some(sr), Some(tr)) = (m.src.corner_radius, m.tgt.corner_radius) {
             if (sr - tr).abs() > 1.0 {
