@@ -67,34 +67,39 @@ pub fn run(args: ValidateArgs) -> Result<(), String> {
         .viewport_height
         .unwrap_or_else(|| (dh as f64 / density).round() as i32);
 
-    let mut elements: Vec<(usize, &crate::schema::SemanticElement)> = schema
+    // All elements sorted by z_index — used for rendering (must match agent)
+    let mut all_elements: Vec<(usize, &crate::schema::SemanticElement)> = schema
         .elements
         .iter()
         .enumerate()
+        .filter(|(_, e)| e.bounds.w > 0 && e.bounds.h > 0)
+        .filter(|(_, e)| e.bounds.x >= 0 && e.bounds.y >= 0)
+        .collect();
+    all_elements.sort_by_key(|(orig_idx, e)| e.z_index.unwrap_or(*orig_idx as u64));
+
+    // Content elements only — used for scoring
+    let elements: Vec<&crate::schema::SemanticElement> = all_elements
+        .iter()
         .filter(|(_, e)| {
             !matches!(
                 e.elem_type.as_str(),
                 "container" | "list" | "scroll" | "pager" | "view"
             )
         })
-        .filter(|(_, e)| e.bounds.w > 0 && e.bounds.h > 0)
-        .filter(|(_, e)| e.bounds.x >= 0 && e.bounds.y >= 0)
         .filter(|(_, e)| e.bounds.x < viewport_w && e.bounds.y < viewport_h)
         .filter(|(_, e)| e.children.is_none())
+        .map(|(_, e)| *e)
         .collect();
-
-    elements.sort_by_key(|(orig_idx, e)| e.z_index.unwrap_or(*orig_idx as u64));
-    let elements: Vec<&crate::schema::SemanticElement> =
-        elements.into_iter().map(|(_, e)| e).collect();
 
     let total = elements.len();
     let sw = args.stroke_width;
     let mut pass_count = 0;
 
+    // Render ALL elements (including containers) to match agent overlay
     let mut render = RgbImage::from_pixel(dw, dh, Rgb([255, 255, 255]));
     let white = Rgb([255, 255, 255]);
 
-    for &elem in &elements {
+    for (_, elem) in &all_elements {
         let elem_id = effective_id(elem);
         let (_, render_color) = djb2_color_pair(elem_id);
         let x = (elem.bounds.x as f64 * density) as i32;
