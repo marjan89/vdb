@@ -127,7 +127,13 @@ pub fn run(args: ValidateContentArgs) -> Result<(), String> {
 }
 
 fn normalize(s: &str) -> String {
-    s.trim().to_lowercase()
+    s.replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .trim()
+        .to_lowercase()
 }
 
 fn parse_uiautomator_xml(xml: &str) -> Result<Vec<A11yElement>, String> {
@@ -136,7 +142,15 @@ fn parse_uiautomator_xml(xml: &str) -> Result<Vec<A11yElement>, String> {
     let bytes = xml.as_bytes();
 
     while pos < bytes.len() {
-        if let Some(start) = xml[pos..].find("<node ") {
+        let next_node = xml[pos..].find("<node ");
+        let next_xcui = xml[pos..].find("<XCUIElementType");
+        let start = match (next_node, next_xcui) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b),
+            (None, None) => None,
+        };
+        if let Some(start) = start {
             let abs_start = pos + start;
             let node_end = xml[abs_start..].find('>').map(|e| abs_start + e);
             let Some(end) = node_end else {
@@ -147,13 +161,21 @@ fn parse_uiautomator_xml(xml: &str) -> Result<Vec<A11yElement>, String> {
 
             let text = extract_attr(node_str, "text").unwrap_or_default();
             let content_desc = extract_attr(node_str, "content-desc").unwrap_or_default();
-            let class = extract_attr(node_str, "class").unwrap_or_default();
+            let label_attr = extract_attr(node_str, "label").unwrap_or_default();
+            let value_attr = extract_attr(node_str, "value").unwrap_or_default();
+            let class = extract_attr(node_str, "class")
+                .or_else(|| extract_attr(node_str, "type"))
+                .unwrap_or_default();
             let bounds = extract_attr(node_str, "bounds").unwrap_or_default();
 
             let label = if !text.is_empty() {
                 text
+            } else if !label_attr.is_empty() {
+                label_attr
             } else if !content_desc.is_empty() {
                 content_desc
+            } else if !value_attr.is_empty() {
+                value_attr
             } else {
                 pos = end + 1;
                 continue;
