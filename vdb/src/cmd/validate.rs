@@ -67,33 +67,34 @@ pub fn run(args: ValidateArgs) -> Result<(), String> {
         .viewport_height
         .unwrap_or_else(|| (dh as f64 / density).round() as i32);
 
-    let elements: Vec<&crate::schema::SemanticElement> = schema
+    let mut elements: Vec<(usize, &crate::schema::SemanticElement)> = schema
         .elements
         .iter()
-        .filter(|e| {
+        .enumerate()
+        .filter(|(_, e)| {
             !matches!(
                 e.elem_type.as_str(),
                 "container" | "list" | "scroll" | "pager" | "view"
             )
         })
-        .filter(|e| e.bounds.w > 0 && e.bounds.h > 0)
-        .filter(|e| e.bounds.x >= 0 && e.bounds.y >= 0)
-        .filter(|e| e.bounds.x < viewport_w && e.bounds.y < viewport_h)
-        .filter(|e| e.children.is_none())
+        .filter(|(_, e)| e.bounds.w > 0 && e.bounds.h > 0)
+        .filter(|(_, e)| e.bounds.x >= 0 && e.bounds.y >= 0)
+        .filter(|(_, e)| e.bounds.x < viewport_w && e.bounds.y < viewport_h)
+        .filter(|(_, e)| e.children.is_none())
         .collect();
+
+    elements.sort_by_key(|(orig_idx, e)| e.z_index.unwrap_or(*orig_idx as u64));
+    let elements: Vec<&crate::schema::SemanticElement> =
+        elements.into_iter().map(|(_, e)| e).collect();
 
     let total = elements.len();
     let sw = args.stroke_width;
     let mut pass_count = 0;
 
-    let mut sorted_indices: Vec<usize> = (0..elements.len()).collect();
-    sorted_indices.sort_by_key(|&i| elements[i].z_index.unwrap_or(i as u64));
-
     let mut render = RgbImage::from_pixel(dw, dh, Rgb([255, 255, 255]));
     let white = Rgb([255, 255, 255]);
 
-    for &idx in &sorted_indices {
-        let elem = elements[idx];
+    for &elem in &elements {
         let elem_id = effective_id(elem);
         let (_, render_color) = djb2_color_pair(elem_id);
         let x = (elem.bounds.x as f64 * density) as i32;
@@ -327,9 +328,39 @@ fn sample_stroke(
             }
         }
     }
+    // Bottom edge
+    for dx in 0..w.min(dw) {
+        for dy in h.saturating_sub(sw)..h {
+            let px = (x + dx as i32) as u32;
+            let py = (y + dy as i32) as u32;
+            if px < dw && py < dh {
+                total_samples += 1;
+                let dp = device.get_pixel(px, py);
+                let rp = render.get_pixel(px, py);
+                if color_close(dp, device_color, tol) && color_close(rp, render_color, tol) {
+                    match_count += 1;
+                }
+            }
+        }
+    }
     // Left edge
-    for dy in sw..h.min(dh) {
+    for dy in sw..h.saturating_sub(sw) {
         for dx in 0..sw.min(w) {
+            let px = (x + dx as i32) as u32;
+            let py = (y + dy as i32) as u32;
+            if px < dw && py < dh {
+                total_samples += 1;
+                let dp = device.get_pixel(px, py);
+                let rp = render.get_pixel(px, py);
+                if color_close(dp, device_color, tol) && color_close(rp, render_color, tol) {
+                    match_count += 1;
+                }
+            }
+        }
+    }
+    // Right edge
+    for dy in sw..h.saturating_sub(sw) {
+        for dx in w.saturating_sub(sw)..w {
             let px = (x + dx as i32) as u32;
             let py = (y + dy as i32) as u32;
             if px < dw && py < dh {
