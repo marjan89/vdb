@@ -82,10 +82,18 @@ pub fn run(args: ValidateContentArgs) -> Result<(), String> {
             })
             .collect();
 
+        let external_classes = [
+            "Map", "MapView", "MKMapView", "XCUIElementTypeMap",
+            "WebView", "WKWebView", "XCUIElementTypeWebView",
+        ];
         a11y_elements.retain(|e| {
-            !external_rects.iter().any(|(rx, ry, rr, rb)| {
+            let is_external_class = external_classes.iter().any(|c| e.class.contains(c));
+            let is_map_child = e.text == "Map pin" || e.text == "Legal"
+                || e.text == "Map Marker" || e.text == "Google Map";
+            let in_external_rect = external_rects.iter().any(|(rx, ry, rr, rb)| {
                 e.x >= *rx && e.y >= *ry && e.x + e.w <= *rr && e.y + e.h <= *rb
-            })
+            });
+            !is_external_class && !is_map_child && !in_external_rect
         });
     }
 
