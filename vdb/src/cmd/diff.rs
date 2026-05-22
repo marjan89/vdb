@@ -119,8 +119,10 @@ pub fn run(args: DiffArgs) -> Result<(), String> {
             ));
         }
 
-        // Color
-        if let (Some(sc), Some(tc)) = (&m.src.color, &m.tgt.color) {
+        // Color / foreground
+        let src_fg = m.src.foreground.as_ref().or(m.src.color.as_ref());
+        let tgt_fg = m.tgt.foreground.as_ref().or(m.tgt.color.as_ref());
+        if let (Some(sc), Some(tc)) = (src_fg, tgt_fg) {
             if !colors_equal(sc, tc) {
                 warnings.push(format!(
                     "WRONG_COLOR: {} — {}:{} {}:{}",
