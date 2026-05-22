@@ -1,0 +1,14 @@
+/Users/Shared/projects/substrate-distro/visual-debug-bridge/vdb/target/release/deps/serde-2cfcefe60597ad83.d: /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /Users/Shared/projects/substrate-distro/visual-debug-bridge/vdb/target/release/build/serde-bfb53c9a55e83b79/out/private.rs
+
+/Users/Shared/projects/substrate-distro/visual-debug-bridge/vdb/target/release/deps/libserde-2cfcefe60597ad83.rlib: /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /Users/Shared/projects/substrate-distro/visual-debug-bridge/vdb/target/release/build/serde-bfb53c9a55e83b79/out/private.rs
+
+/Users/Shared/projects/substrate-distro/visual-debug-bridge/vdb/target/release/deps/libserde-2cfcefe60597ad83.rmeta: /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /Users/Shared/projects/substrate-distro/visual-debug-bridge/vdb/target/release/build/serde-bfb53c9a55e83b79/out/private.rs
+
+/Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs:
+/Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs:
+/Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs:
+/Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs:
+/Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs:
+/Users/Shared/projects/substrate-distro/visual-debug-bridge/vdb/target/release/build/serde-bfb53c9a55e83b79/out/private.rs:
+
+# env-dep:OUT_DIR=/Users/Shared/projects/substrate-distro/visual-debug-bridge/vdb/target/release/build/serde-bfb53c9a55e83b79/out

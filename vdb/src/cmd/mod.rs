@@ -1,0 +1,43 @@
+mod compare;
+mod diff;
+mod overlay;
+mod render;
+mod validate;
+mod validate_v2;
+
+use clap::{Parser, Subcommand};
+
+#[derive(Parser)]
+#[command(name = "vdb", version, about = "Visual Debug Bridge — semantic diff, render, and compare")]
+pub struct Cli {
+    #[command(subcommand)]
+    pub command: Command,
+}
+
+#[derive(Subcommand)]
+pub enum Command {
+    /// Compare two semantic schemas and output mismatches
+    Diff(diff::DiffArgs),
+    /// Render semantic schema YAML as a PNG reconstruction
+    Render(render::RenderArgs),
+    /// Visual screenshot comparison (SSIM + pixel diff)
+    Compare(compare::CompareArgs),
+    /// Overlay semantic bounds on a device screenshot
+    Overlay(overlay::OverlayArgs),
+    /// Validate YAML bounds against agent overlay (color AND gate)
+    Validate(validate::ValidateArgs),
+    /// Per-element color fingerprint validation (v2)
+    #[command(name = "validate-v2")]
+    ValidateV2(validate_v2::ValidateV2Args),
+}
+
+pub fn run(cli: Cli) -> Result<(), String> {
+    match cli.command {
+        Command::Diff(args) => diff::run(args),
+        Command::Render(args) => render::run(args),
+        Command::Compare(args) => compare::run(args),
+        Command::Overlay(args) => overlay::run(args),
+        Command::Validate(args) => validate::run(args),
+        Command::ValidateV2(args) => validate_v2::run(args),
+    }
+}

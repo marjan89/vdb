@@ -1,0 +1,11 @@
+/Users/Shared/projects/substrate-distro/visual-debug-bridge/vdb/target/release/deps/v_frame-eaea8025977c1c08.d: /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/v_frame-0.3.9/src/lib.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/v_frame-0.3.9/src/frame.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/v_frame-0.3.9/src/math.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/v_frame-0.3.9/src/pixel.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/v_frame-0.3.9/src/plane.rs
+
+/Users/Shared/projects/substrate-distro/visual-debug-bridge/vdb/target/release/deps/libv_frame-eaea8025977c1c08.rlib: /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/v_frame-0.3.9/src/lib.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/v_frame-0.3.9/src/frame.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/v_frame-0.3.9/src/math.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/v_frame-0.3.9/src/pixel.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/v_frame-0.3.9/src/plane.rs
+
+/Users/Shared/projects/substrate-distro/visual-debug-bridge/vdb/target/release/deps/libv_frame-eaea8025977c1c08.rmeta: /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/v_frame-0.3.9/src/lib.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/v_frame-0.3.9/src/frame.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/v_frame-0.3.9/src/math.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/v_frame-0.3.9/src/pixel.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/v_frame-0.3.9/src/plane.rs
+
+/Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/v_frame-0.3.9/src/lib.rs:
+/Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/v_frame-0.3.9/src/frame.rs:
+/Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/v_frame-0.3.9/src/math.rs:
+/Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/v_frame-0.3.9/src/pixel.rs:
+/Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/v_frame-0.3.9/src/plane.rs:

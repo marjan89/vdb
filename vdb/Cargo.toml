@@ -1,0 +1,18 @@
+[package]
+name = "vdb"
+version = "0.1.0"
+edition = "2024"
+description = "Visual Debug Bridge — semantic diff, render, and compare for QA schemas"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1"
+image = "0.25"
+ab_glyph = "0.2"
+imageproc = "0.25"
+lyon_tessellation = "1"
+lyon_path = "1"
+lyon_algorithms = "1"
+walkdir = "2"

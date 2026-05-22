@@ -1,0 +1,14 @@
+/Users/Shared/projects/substrate-distro/visual-debug-bridge/vdb/target/release/deps/thiserror-9281db7ae54c644c.d: /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/lib.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/aserror.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/display.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/var.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/private.rs /Users/Shared/projects/substrate-distro/visual-debug-bridge/vdb/target/release/build/thiserror-8584e1fbf982501d/out/private.rs
+
+/Users/Shared/projects/substrate-distro/visual-debug-bridge/vdb/target/release/deps/libthiserror-9281db7ae54c644c.rlib: /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/lib.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/aserror.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/display.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/var.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/private.rs /Users/Shared/projects/substrate-distro/visual-debug-bridge/vdb/target/release/build/thiserror-8584e1fbf982501d/out/private.rs
+
+/Users/Shared/projects/substrate-distro/visual-debug-bridge/vdb/target/release/deps/libthiserror-9281db7ae54c644c.rmeta: /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/lib.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/aserror.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/display.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/var.rs /Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/private.rs /Users/Shared/projects/substrate-distro/visual-debug-bridge/vdb/target/release/build/thiserror-8584e1fbf982501d/out/private.rs
+
+/Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/lib.rs:
+/Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/aserror.rs:
+/Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/display.rs:
+/Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/var.rs:
+/Users/sinisa/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/private.rs:
+/Users/Shared/projects/substrate-distro/visual-debug-bridge/vdb/target/release/build/thiserror-8584e1fbf982501d/out/private.rs:
+
+# env-dep:OUT_DIR=/Users/Shared/projects/substrate-distro/visual-debug-bridge/vdb/target/release/build/thiserror-8584e1fbf982501d/out
