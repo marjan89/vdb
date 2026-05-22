@@ -36,6 +36,27 @@ h1 { padding: 16px 24px; font-size: 18px; color: #999; font-weight: 400; }
 #tooltip .field { color: #888; }
 #tooltip .value { color: #7af; }
 #tooltip .id { color: #fa7; font-weight: 600; font-size: 14px; }
+#remark-dialog { position: fixed; display: none; background: #2a2a3e; border: 1px solid #666;
+  border-radius: 8px; padding: 12px; z-index: 1001; width: 300px; }
+#remark-dialog textarea { width: 100%; height: 60px; background: #1a1a2e; color: #eee;
+  border: 1px solid #555; border-radius: 4px; padding: 6px; font-size: 12px; resize: vertical; }
+#remark-dialog .btn-row { display: flex; gap: 8px; margin-top: 8px; justify-content: flex-end; }
+#remark-dialog button { padding: 4px 12px; border-radius: 4px; border: 1px solid #555;
+  background: #3a3a5e; color: #ccc; cursor: pointer; font-size: 12px; }
+#remark-dialog button.save { background: #4a6a4a; border-color: #6a9a6a; }
+#remark-dialog .elem-id { color: #fa7; font-size: 11px; margin-bottom: 6px; }
+.remark-pin { position: absolute; width: 12px; height: 12px; background: #f55; border: 2px solid #fff;
+  border-radius: 50%; transform: translate(-50%, -50%); cursor: pointer; z-index: 10;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.5); }
+.remark-pin:hover { background: #ff8; }
+#remarks-panel { position: fixed; right: 0; top: 0; width: 280px; height: 100vh; background: #1e1e32;
+  border-left: 1px solid #444; overflow-y: auto; padding: 12px; display: none; z-index: 900; }
+#remarks-panel h3 { color: #999; font-size: 13px; margin-bottom: 8px; }
+.remark-item { background: #2a2a3e; border-radius: 6px; padding: 8px; margin-bottom: 8px; font-size: 11px; }
+.remark-item .ri-id { color: #fa7; font-weight: 600; }
+.remark-item .ri-loc { color: #666; }
+.remark-item .ri-text { color: #ccc; margin-top: 4px; }
+.remark-item .ri-delete { color: #a55; cursor: pointer; float: right; font-size: 10px; }
 </style>
 </head>
 <body>
@@ -44,9 +65,19 @@ h1 { padding: 16px 24px; font-size: 18px; color: #999; font-weight: 400; }
   <button class="active" data-mode="stroke">Stroke</button>
   <button data-mode="fill">Fill</button>
   <button data-mode="screenshot">Screenshot</button>
+  <button id="toggle-remarks" style="margin-left:auto">Remarks (0)</button>
 </div>
 <div class="grid" id="grid"></div>
 <div id="tooltip"></div>
+<div id="remark-dialog">
+  <div class="elem-id" id="remark-elem"></div>
+  <textarea id="remark-text" placeholder="Add remark..."></textarea>
+  <div class="btn-row">
+    <button onclick="closeRemark()">Cancel</button>
+    <button class="save" onclick="saveRemark()">Save</button>
+  </div>
+</div>
+<div id="remarks-panel"><h3>Remarks</h3><div id="remarks-list"></div></div>
 
 <script>
 const captures = CAPTURES_JSON;
@@ -72,11 +103,11 @@ function renderGrid() {
     img.src = '/img/' + cap[mode];
     img.dataset.platform = cap.platform;
     img.dataset.screen = cap.screen;
-    img.addEventListener('click', onImageClick);
     img.addEventListener('mousemove', onImageMove);
     img.addEventListener('mouseleave', () => {
       document.getElementById('tooltip').style.display = 'none';
     });
+    img.addEventListener('contextmenu', onRightClick);
     card.appendChild(img);
     const label = document.createElement('div');
     label.className = 'label';
@@ -162,9 +193,101 @@ function onImageMove(e) {
   }
 }
 
-function onImageClick(e) {
-  // Click pins the tooltip — handled by mousemove already
+let remarks = [];
+let pendingRemark = null;
+
+function onRightClick(e) {
+  e.preventDefault();
+  const img = e.target;
+  const rect = img.getBoundingClientRect();
+  const key = img.dataset.platform + '-' + img.dataset.screen;
+  const data = yamlData[key];
+  if (!data) return;
+
+  const scaleX = img.naturalWidth / rect.width;
+  const scaleY = img.naturalHeight / rect.height;
+  const pxX = (e.clientX - rect.left) * scaleX;
+  const pxY = (e.clientY - rect.top) * scaleY;
+  const density = data._density || 1;
+  const dpX = pxX / density;
+  const dpY = pxY / density;
+
+  const el = findElement(img.dataset.platform, img.dataset.screen, dpX, dpY);
+  const dialog = document.getElementById('remark-dialog');
+  document.getElementById('remark-elem').textContent = el ? el.id + ' (' + el.type + ')' : 'dp(' + Math.round(dpX) + ',' + Math.round(dpY) + ')';
+  document.getElementById('remark-text').value = '';
+  dialog.style.display = 'block';
+  dialog.style.left = Math.min(e.clientX, window.innerWidth - 320) + 'px';
+  dialog.style.top = Math.min(e.clientY, window.innerHeight - 160) + 'px';
+  document.getElementById('remark-text').focus();
+
+  const relX = (e.clientX - rect.left) / rect.width;
+  const relY = (e.clientY - rect.top) / rect.height;
+  pendingRemark = { platform: img.dataset.platform, screen: img.dataset.screen,
+    elemId: el ? el.id : null, elemType: el ? el.type : null,
+    dpX: Math.round(dpX), dpY: Math.round(dpY), relX, relY, mode };
 }
+
+function closeRemark() {
+  document.getElementById('remark-dialog').style.display = 'none';
+  pendingRemark = null;
+}
+
+function saveRemark() {
+  const text = document.getElementById('remark-text').value.trim();
+  if (!text || !pendingRemark) return;
+  const r = { ...pendingRemark, text, ts: new Date().toISOString() };
+  remarks.push(r);
+  fetch('/remarks', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(r) });
+  closeRemark();
+  renderPins();
+  updateRemarksPanel();
+}
+
+function deleteRemark(idx) {
+  remarks.splice(idx, 1);
+  fetch('/remarks', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(remarks) });
+  renderPins();
+  updateRemarksPanel();
+}
+
+function renderPins() {
+  document.querySelectorAll('.remark-pin').forEach(p => p.remove());
+  for (const [i, r] of remarks.entries()) {
+    const img = document.querySelector('img[data-platform="'+r.platform+'"][data-screen="'+r.screen+'"]');
+    if (!img) continue;
+    const card = img.parentElement;
+    const rect = img.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    const pin = document.createElement('div');
+    pin.className = 'remark-pin';
+    pin.style.left = (r.relX * rect.width) + 'px';
+    pin.style.top = (r.relY * rect.height) + 'px';
+    pin.title = r.text;
+    card.appendChild(pin);
+  }
+}
+
+function updateRemarksPanel() {
+  const btn = document.getElementById('toggle-remarks');
+  btn.textContent = 'Remarks (' + remarks.length + ')';
+  const list = document.getElementById('remarks-list');
+  list.innerHTML = '';
+  for (const [i, r] of remarks.entries()) {
+    const div = document.createElement('div');
+    div.className = 'remark-item';
+    div.innerHTML = '<span class="ri-delete" onclick="deleteRemark('+i+')">x</span>' +
+      '<div class="ri-id">' + esc(r.elemId || 'no element') + '</div>' +
+      '<div class="ri-loc">' + r.platform + '/' + r.screen + ' dp(' + r.dpX + ',' + r.dpY + ')</div>' +
+      '<div class="ri-text">' + esc(r.text) + '</div>';
+    list.appendChild(div);
+  }
+}
+
+document.getElementById('toggle-remarks').addEventListener('click', () => {
+  const panel = document.getElementById('remarks-panel');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+});
 
 function esc(s) {
   if (!s) return '';
@@ -173,9 +296,13 @@ function esc(s) {
 
 renderGrid();
 loadYamls();
+fetch('/remarks').then(r => r.ok ? r.json() : []).then(r => { remarks = r || []; renderPins(); updateRemarksPanel(); });
 </script>
 </body>
 </html>"""
+
+
+REMARKS_FILE = CAPTURE_DIR / "remarks.json"
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -186,6 +313,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.serve_image(self.path[5:])
         elif self.path.startswith("/yaml/"):
             self.serve_yaml(self.path[6:])
+        elif self.path == "/remarks":
+            self.serve_remarks()
+        else:
+            self.send_error(404)
+
+    def do_POST(self):
+        if self.path == "/remarks":
+            self.add_remark()
+        else:
+            self.send_error(404)
+
+    def do_PUT(self):
+        if self.path == "/remarks":
+            self.replace_remarks()
         else:
             self.send_error(404)
 
@@ -222,6 +363,45 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.end_headers()
         self.wfile.write(json.dumps(data).encode())
+
+    def serve_remarks(self):
+        remarks = []
+        if REMARKS_FILE.exists():
+            try:
+                remarks = json.loads(REMARKS_FILE.read_text())
+            except Exception:
+                pass
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(remarks).encode())
+
+    def add_remark(self):
+        length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(length)
+        remark = json.loads(body)
+        remarks = []
+        if REMARKS_FILE.exists():
+            try:
+                remarks = json.loads(REMARKS_FILE.read_text())
+            except Exception:
+                pass
+        remarks.append(remark)
+        REMARKS_FILE.write_text(json.dumps(remarks, indent=2))
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(b'{"ok":true}')
+
+    def replace_remarks(self):
+        length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(length)
+        remarks = json.loads(body)
+        REMARKS_FILE.write_text(json.dumps(remarks, indent=2))
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(b'{"ok":true}')
 
     def log_message(self, fmt, *args):
         pass
