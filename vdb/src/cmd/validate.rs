@@ -58,14 +58,25 @@ pub fn run(args: ValidateArgs) -> Result<(), String> {
 
     let (dw, dh) = device.dimensions();
 
-    let density = args.density.unwrap_or_else(|| auto_density(&schema, dw));
+    let density = args.density.unwrap_or_else(|| {
+        schema.viewport.as_ref()
+            .filter(|v| v.density > 0.0)
+            .map(|v| { eprintln!("density: {:.3} (from YAML viewport)", v.density); v.density })
+            .unwrap_or_else(|| auto_density(&schema, dw))
+    });
 
-    let viewport_w = args
-        .viewport_width
-        .unwrap_or_else(|| (dw as f64 / density).round() as i32);
-    let viewport_h = args
-        .viewport_height
-        .unwrap_or_else(|| (dh as f64 / density).round() as i32);
+    let viewport_w = args.viewport_width.unwrap_or_else(|| {
+        schema.viewport.as_ref()
+            .filter(|v| v.width > 0)
+            .map(|v| v.width)
+            .unwrap_or_else(|| (dw as f64 / density).round() as i32)
+    });
+    let viewport_h = args.viewport_height.unwrap_or_else(|| {
+        schema.viewport.as_ref()
+            .filter(|v| v.height > 0)
+            .map(|v| v.height)
+            .unwrap_or_else(|| (dh as f64 / density).round() as i32)
+    });
 
     // All elements sorted by z_index — used for rendering (must match agent)
     let mut all_elements: Vec<(usize, &crate::schema::SemanticElement)> = schema
