@@ -92,8 +92,14 @@ pub fn run(args: ValidateContentArgs) -> Result<(), String> {
         ];
         a11y_elements.retain(|e| {
             let is_external_class = external_classes.iter().any(|c| e.class.contains(c));
+            let center_x = e.x + e.w / 2;
+            let center_y = e.y + e.h / 2;
+            let center_in_external = external_rects.iter().any(|(rx, ry, rr, rb)| {
+                center_x >= *rx && center_x <= *rr && center_y >= *ry && center_y <= *rb
+            });
             let is_map_child = e.text == "Map pin" || e.text == "Legal"
-                || e.text == "Map Marker" || e.text == "Google Map";
+                || e.text == "Map Marker" || e.text == "Google Map"
+                || center_in_external;
             let in_external_rect = external_rects.iter().any(|(rx, ry, rr, rb)| {
                 e.x >= *rx && e.y >= *ry && e.x + e.w <= *rr && e.y + e.h <= *rb
             });
@@ -106,10 +112,16 @@ pub fn run(args: ValidateContentArgs) -> Result<(), String> {
             let is_app = e.class == "XCUIElementTypeApplication";
             let is_scroll_bar = e.text.contains("scroll bar");
             let is_icon_asset = e.class == "XCUIElementTypeImage"
-                && !e.text.contains(' ')
-                && (e.text.contains('_') || e.text.contains('-') || e.text.contains('.'));
+                && ((!e.text.contains(' ')
+                    && (e.text.contains('_') || e.text.contains('-') || e.text.contains('.')))
+                    || e.text.len() <= 1);
             let is_nav_bar_title = e.class == "XCUIElementTypeNavigationBar";
-            !is_app && !is_scroll_bar && !is_icon_asset && !is_nav_bar_title
+            let is_toolbar_icon = matches!(
+                e.text.as_str(),
+                "thin-check" | "check-circle" | "save_default" | "find"
+                    | "location.marker.white" | "share"
+            );
+            !is_app && !is_scroll_bar && !is_icon_asset && !is_nav_bar_title && !is_toolbar_icon
         });
     }
 
