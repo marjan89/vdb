@@ -21,6 +21,10 @@ pub struct ValidateContentArgs {
     /// Exclude a11y elements beyond viewport bounds
     #[arg(long)]
     pub exclude_offscreen: bool,
+
+    /// Exclude system chrome (scroll bars, app name, icon assets)
+    #[arg(long)]
+    pub exclude_system: bool,
 }
 
 struct A11yElement {
@@ -97,6 +101,18 @@ pub fn run(args: ValidateContentArgs) -> Result<(), String> {
         });
     }
 
+    if args.exclude_system {
+        a11y_elements.retain(|e| {
+            let is_app = e.class == "XCUIElementTypeApplication";
+            let is_scroll_bar = e.text.contains("scroll bar");
+            let is_icon_asset = e.class == "XCUIElementTypeImage"
+                && !e.text.contains(' ')
+                && (e.text.contains('_') || e.text.contains('-') || e.text.contains('.'));
+            let is_nav_bar_title = e.class == "XCUIElementTypeNavigationBar";
+            !is_app && !is_scroll_bar && !is_icon_asset && !is_nav_bar_title
+        });
+    }
+
     let yaml_texts: HashSet<String> = schema
         .elements
         .iter()
@@ -115,12 +131,24 @@ pub fn run(args: ValidateContentArgs) -> Result<(), String> {
     let mut missing = Vec::new();
     let mut extra = Vec::new();
 
+    let yaml_text_list: Vec<String> = schema
+        .elements
+        .iter()
+        .filter_map(|e| e.content.as_ref())
+        .map(|c| normalize(c))
+        .filter(|c| !c.is_empty())
+        .collect();
+
     for elem in &a11y_elements {
         let norm = normalize(&elem.text);
         if norm.is_empty() {
             continue;
         }
-        if yaml_texts.contains(&norm) {
+        let exact = yaml_texts.contains(&norm);
+        let substring = !exact
+            && norm.len() >= 3
+            && yaml_text_list.iter().any(|yt| yt.contains(&norm) || norm.contains(yt.as_str()));
+        if exact || substring {
             matched.push(elem);
         } else {
             missing.push(elem);
