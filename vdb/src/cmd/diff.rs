@@ -21,6 +21,7 @@ pub struct DiffArgs {
 struct Match<'a> {
     src: &'a SemanticElement,
     tgt: &'a SemanticElement,
+    #[allow(dead_code)]
     method: &'static str,
 }
 

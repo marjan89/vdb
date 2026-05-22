@@ -3,7 +3,6 @@ mod diff;
 mod overlay;
 mod render;
 mod validate;
-mod validate_v2;
 
 use clap::{Parser, Subcommand};
 
@@ -24,11 +23,8 @@ pub enum Command {
     Compare(compare::CompareArgs),
     /// Overlay semantic bounds on a device screenshot
     Overlay(overlay::OverlayArgs),
-    /// Validate YAML bounds against agent overlay (color AND gate)
+    /// Per-element djb2 color fingerprint validation
     Validate(validate::ValidateArgs),
-    /// Per-element color fingerprint validation (v2)
-    #[command(name = "validate-v2")]
-    ValidateV2(validate_v2::ValidateV2Args),
 }
 
 pub fn run(cli: Cli) -> Result<(), String> {
@@ -38,6 +34,5 @@ pub fn run(cli: Cli) -> Result<(), String> {
         Command::Compare(args) => compare::run(args),
         Command::Overlay(args) => overlay::run(args),
         Command::Validate(args) => validate::run(args),
-        Command::ValidateV2(args) => validate_v2::run(args),
     }
 }

@@ -1,5 +1,5 @@
 use clap::Args;
-use image::{DynamicImage, GenericImageView, GrayImage, Luma, Rgb, RgbImage};
+use image::{GenericImageView, GrayImage, Rgb, RgbImage};
 
 #[derive(Args)]
 pub struct CompareArgs {

@@ -1,6 +1,6 @@
 use clap::Args;
 use ab_glyph::FontRef;
-use image::{Rgba, RgbaImage, GenericImageView};
+use image::{Rgba, GenericImageView};
 use imageproc::drawing::{draw_hollow_rect_mut, draw_text_mut};
 use imageproc::rect::Rect;
 

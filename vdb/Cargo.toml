@@ -16,3 +16,4 @@ lyon_tessellation = "1"
 lyon_path = "1"
 lyon_algorithms = "1"
 walkdir = "2"
+semantic-schema = { path = "../../semantic-schema" }

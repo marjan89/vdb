@@ -1217,6 +1217,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "semantic-schema"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "serde"
 version = "1.0.228"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1427,6 +1434,7 @@ dependencies = [
  "lyon_algorithms",
  "lyon_path",
  "lyon_tessellation",
+ "semantic-schema",
  "serde",
  "serde_json",
  "serde_yaml",
