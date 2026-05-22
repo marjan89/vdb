@@ -26,8 +26,8 @@ pub struct ValidateArgs {
     #[arg(long, default_value = "stroke")]
     pub pass: String,
 
-    /// Pass threshold per element (overlap %, default 70)
-    #[arg(long, default_value = "70")]
+    /// Pass threshold per element (overlap %, default 50)
+    #[arg(long, default_value = "50")]
     pub threshold: f64,
 
     /// Color matching tolerance (0-255, default 120 for OLED displays)
