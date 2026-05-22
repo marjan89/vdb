@@ -95,26 +95,26 @@ pub fn run(args: ValidateArgs) -> Result<(), String> {
     let sw = args.stroke_width;
     let mut pass_count = 0;
 
-    // Render ALL elements (including containers) to match agent overlay
+    // Render reference overlay matching agent (same djb2 colors, same z-order)
     let mut render = RgbImage::from_pixel(dw, dh, Rgb([255, 255, 255]));
     let white = Rgb([255, 255, 255]);
 
     for (_, elem) in &all_elements {
-        let elem_id = effective_id(elem);
-        let (_, render_color) = djb2_color_pair(elem_id);
+        let color = djb2_color(effective_id(elem));
         let x = (elem.bounds.x as f64 * density) as i32;
         let y = (elem.bounds.y as f64 * density) as i32;
         let w = (elem.bounds.w as f64 * density) as u32;
         let h = (elem.bounds.h as f64 * density) as u32;
 
         if args.pass == "fill" {
-            draw_fill_rect(&mut render, x, y, w, h, render_color);
+            draw_fill_rect(&mut render, x, y, w, h, color);
         } else {
             draw_fill_rect(&mut render, x, y, w, h, white);
-            draw_stroke_rect(&mut render, x, y, w, h, sw, render_color);
+            draw_stroke_rect(&mut render, x, y, w, h, sw, color);
         }
     }
 
+    // Difference composite for visual debugging
     let mut composite = RgbImage::new(dw, dh);
     for y in 0..dh {
         for x in 0..dw {
@@ -130,8 +130,7 @@ pub fn run(args: ValidateArgs) -> Result<(), String> {
     println!("vdb validate results:\n");
 
     for (i, elem) in elements.iter().enumerate() {
-        let elem_id = effective_id(elem);
-        let (device_color, render_color) = djb2_color_pair(elem_id);
+        let expected = djb2_color(effective_id(elem));
         let x = (elem.bounds.x as f64 * density) as i32;
         let y = (elem.bounds.y as f64 * density) as i32;
         let w = (elem.bounds.w as f64 * density) as u32;
@@ -151,22 +150,9 @@ pub fn run(args: ValidateArgs) -> Result<(), String> {
         }
 
         let (match_count, total_samples) = if args.pass == "fill" {
-            sample_fill(&device, &render, x, y, w, h, dw, dh, &device_color, &render_color, tol)
+            sample_fill(&device, x, y, w, h, dw, dh, &expected, tol)
         } else {
-            sample_stroke(
-                &device,
-                &render,
-                x,
-                y,
-                w,
-                h,
-                sw,
-                dw,
-                dh,
-                &device_color,
-                &render_color,
-                tol,
-            )
+            sample_stroke(&device, x, y, w, h, sw, dw, dh, &expected, tol)
         };
 
         let overlap = if total_samples > 0 {
@@ -246,11 +232,9 @@ fn effective_id(elem: &crate::schema::SemanticElement) -> &str {
     }
 }
 
-fn djb2_color_pair(id: &str) -> (Rgb<u8>, Rgb<u8>) {
+fn djb2_color(id: &str) -> Rgb<u8> {
     let hue = djb2_hue(id);
-    let device = hsl_to_rgb(hue, 1.0, 0.5);
-    let render = hsl_to_rgb((hue + 180.0) % 360.0, 1.0, 0.5);
-    (device, render)
+    hsl_to_rgb(hue, 1.0, 0.5)
 }
 
 fn djb2_hue(id: &str) -> f32 {
@@ -270,15 +254,13 @@ fn color_close(a: &Rgb<u8>, b: &Rgb<u8>, threshold: u8) -> bool {
 
 fn sample_fill(
     device: &RgbImage,
-    render: &RgbImage,
     x: i32,
     y: i32,
     w: u32,
     h: u32,
     dw: u32,
     dh: u32,
-    device_color: &Rgb<u8>,
-    render_color: &Rgb<u8>,
+    expected: &Rgb<u8>,
     tol: u8,
 ) -> (u32, u32) {
     let mut match_count = 0u32;
@@ -290,9 +272,7 @@ fn sample_fill(
             let py = (y + dy as i32) as u32;
             if px < dw && py < dh {
                 total_samples += 1;
-                let dp = device.get_pixel(px, py);
-                let rp = render.get_pixel(px, py);
-                if color_close(dp, device_color, tol) && color_close(rp, render_color, tol) {
+                if color_close(device.get_pixel(px, py), expected, tol) {
                     match_count += 1;
                 }
             }
@@ -303,7 +283,6 @@ fn sample_fill(
 
 fn sample_stroke(
     device: &RgbImage,
-    render: &RgbImage,
     x: i32,
     y: i32,
     w: u32,
@@ -311,71 +290,43 @@ fn sample_stroke(
     sw: u32,
     dw: u32,
     dh: u32,
-    device_color: &Rgb<u8>,
-    render_color: &Rgb<u8>,
+    expected: &Rgb<u8>,
     tol: u8,
 ) -> (u32, u32) {
     let mut match_count = 0u32;
     let mut total_samples = 0u32;
 
+    let sample = |px: u32, py: u32, mc: &mut u32, ts: &mut u32| {
+        if px < dw && py < dh {
+            *ts += 1;
+            if color_close(device.get_pixel(px, py), expected, tol) {
+                *mc += 1;
+            }
+        }
+    };
+
     // Top edge
     for dx in 0..w.min(dw) {
         for dy in 0..sw.min(h) {
-            let px = (x + dx as i32) as u32;
-            let py = (y + dy as i32) as u32;
-            if px < dw && py < dh {
-                total_samples += 1;
-                let dp = device.get_pixel(px, py);
-                let rp = render.get_pixel(px, py);
-                if color_close(dp, device_color, tol) && color_close(rp, render_color, tol) {
-                    match_count += 1;
-                }
-            }
+            sample((x + dx as i32) as u32, (y + dy as i32) as u32, &mut match_count, &mut total_samples);
         }
     }
     // Bottom edge
     for dx in 0..w.min(dw) {
         for dy in h.saturating_sub(sw)..h {
-            let px = (x + dx as i32) as u32;
-            let py = (y + dy as i32) as u32;
-            if px < dw && py < dh {
-                total_samples += 1;
-                let dp = device.get_pixel(px, py);
-                let rp = render.get_pixel(px, py);
-                if color_close(dp, device_color, tol) && color_close(rp, render_color, tol) {
-                    match_count += 1;
-                }
-            }
+            sample((x + dx as i32) as u32, (y + dy as i32) as u32, &mut match_count, &mut total_samples);
         }
     }
     // Left edge
     for dy in sw..h.saturating_sub(sw) {
         for dx in 0..sw.min(w) {
-            let px = (x + dx as i32) as u32;
-            let py = (y + dy as i32) as u32;
-            if px < dw && py < dh {
-                total_samples += 1;
-                let dp = device.get_pixel(px, py);
-                let rp = render.get_pixel(px, py);
-                if color_close(dp, device_color, tol) && color_close(rp, render_color, tol) {
-                    match_count += 1;
-                }
-            }
+            sample((x + dx as i32) as u32, (y + dy as i32) as u32, &mut match_count, &mut total_samples);
         }
     }
     // Right edge
     for dy in sw..h.saturating_sub(sw) {
         for dx in w.saturating_sub(sw)..w {
-            let px = (x + dx as i32) as u32;
-            let py = (y + dy as i32) as u32;
-            if px < dw && py < dh {
-                total_samples += 1;
-                let dp = device.get_pixel(px, py);
-                let rp = render.get_pixel(px, py);
-                if color_close(dp, device_color, tol) && color_close(rp, render_color, tol) {
-                    match_count += 1;
-                }
-            }
+            sample((x + dx as i32) as u32, (y + dy as i32) as u32, &mut match_count, &mut total_samples);
         }
     }
 
