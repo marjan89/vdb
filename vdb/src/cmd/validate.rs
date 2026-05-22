@@ -160,6 +160,19 @@ pub fn run(args: ValidateArgs) -> Result<(), String> {
             continue;
         }
 
+        // Compute occlusion from ALL higher-z elements (including containers)
+        let visible = visible_fraction_all(elem, &all_elements);
+
+        if visible < 0.05 {
+            println!(
+                "  {:30} SKIP (occluded {:.0}% visible)",
+                display_id,
+                visible * 100.0
+            );
+            pass_count += 1;
+            continue;
+        }
+
         let (match_count, total_samples) = if args.pass == "fill" {
             sample_fill(&device, x, y, w, h, dw, dh, &expected, tol)
         } else {
@@ -172,13 +185,8 @@ pub fn run(args: ValidateArgs) -> Result<(), String> {
             0.0
         };
 
-        let adjusted = if overlap < args.threshold {
-            let visible = visible_fraction(elem, i, &elements);
-            if visible < 0.99 {
-                overlap / (visible * 100.0) * 100.0
-            } else {
-                overlap
-            }
+        let adjusted = if visible < 0.95 {
+            (overlap / visible).min(100.0)
         } else {
             overlap
         };
@@ -192,10 +200,17 @@ pub fn run(args: ValidateArgs) -> Result<(), String> {
             pass_count += 1;
         }
 
-        println!(
-            "  {:30} {} ({} overlap {:.0}%)",
-            display_id, status, args.pass, overlap
-        );
+        if visible < 0.95 {
+            println!(
+                "  {:30} {} ({} overlap {:.0}%, {:.0}% visible, adj {:.0}%)",
+                display_id, status, args.pass, overlap, visible * 100.0, adjusted
+            );
+        } else {
+            println!(
+                "  {:30} {} ({} overlap {:.0}%)",
+                display_id, status, args.pass, overlap
+            );
+        }
     }
 
     println!("\n  TOTAL: {}/{} PASS", pass_count, total);
@@ -355,18 +370,23 @@ fn sample_stroke(
     (match_count, total_samples)
 }
 
-fn visible_fraction(
+fn visible_fraction_all(
     elem: &crate::schema::SemanticElement,
-    elem_idx: usize,
-    all: &[&crate::schema::SemanticElement],
+    all: &[(usize, &crate::schema::SemanticElement)],
 ) -> f64 {
     let total_area = (elem.bounds.w * elem.bounds.h) as f64;
     if total_area <= 0.0 {
         return 1.0;
     }
 
+    let elem_z = elem.z_index.unwrap_or(0);
     let mut occluded = 0.0;
-    for other in all.iter().skip(elem_idx + 1) {
+
+    for (_, other) in all {
+        let other_z = other.z_index.unwrap_or(0);
+        if other_z <= elem_z {
+            continue;
+        }
         let ix1 = elem.bounds.x.max(other.bounds.x);
         let iy1 = elem.bounds.y.max(other.bounds.y);
         let ix2 = (elem.bounds.x + elem.bounds.w).min(other.bounds.x + other.bounds.w);
@@ -376,7 +396,7 @@ fn visible_fraction(
         }
     }
 
-    ((total_area - occluded).max(0.0) / total_area).max(0.1)
+    ((total_area - occluded).max(0.0) / total_area).max(0.0)
 }
 
 fn save_visual_overlay(
