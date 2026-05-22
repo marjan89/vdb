@@ -13,12 +13,23 @@ pub struct ValidateContentArgs {
     /// Output as JSON
     #[arg(long)]
     pub json: bool,
+
+    /// Exclude a11y elements inside external render surfaces (maps, webviews)
+    #[arg(long)]
+    pub exclude_external: bool,
+
+    /// Exclude a11y elements beyond viewport bounds
+    #[arg(long)]
+    pub exclude_offscreen: bool,
 }
 
 struct A11yElement {
     text: String,
     class: String,
-    bounds: String,
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
 }
 
 pub fn run(args: ValidateContentArgs) -> Result<(), String> {
@@ -30,11 +41,53 @@ pub fn run(args: ValidateContentArgs) -> Result<(), String> {
     let dump_str =
         std::fs::read_to_string(&args.a11y_dump).map_err(|e| format!("read a11y dump: {e}"))?;
 
-    let a11y_elements = if dump_str.trim_start().starts_with('<') {
+    let mut a11y_elements = if dump_str.trim_start().starts_with('<') {
         parse_uiautomator_xml(&dump_str)?
     } else {
         parse_wda_json(&dump_str)?
     };
+
+    let viewport_w = schema.viewport.as_ref().map(|v| v.width).unwrap_or(
+        schema.elements.first().map(|e| e.bounds.w).unwrap_or(400),
+    );
+    let viewport_h = schema.viewport.as_ref().map(|v| v.height).unwrap_or(
+        schema.elements.first().map(|e| e.bounds.h).unwrap_or(900),
+    );
+    let density = schema
+        .viewport
+        .as_ref()
+        .filter(|v| v.density > 0.0)
+        .map(|v| v.density)
+        .unwrap_or(3.0);
+
+    if args.exclude_offscreen {
+        let max_px_x = (viewport_w as f64 * density) as i32;
+        let max_px_y = (viewport_h as f64 * density) as i32;
+        a11y_elements.retain(|e| e.x >= 0 && e.y >= 0 && e.x < max_px_x && e.y < max_px_y);
+    }
+
+    if args.exclude_external {
+        let external_rects: Vec<_> = schema
+            .elements
+            .iter()
+            .filter(|e| e.render.as_deref() == Some("external"))
+            .map(|e| {
+                let b = &e.bounds;
+                (
+                    (b.x as f64 * density) as i32,
+                    (b.y as f64 * density) as i32,
+                    ((b.x + b.w) as f64 * density) as i32,
+                    ((b.y + b.h) as f64 * density) as i32,
+                )
+            })
+            .collect();
+
+        a11y_elements.retain(|e| {
+            !external_rects.iter().any(|(rx, ry, rr, rb)| {
+                e.x >= *rx && e.y >= *ry && e.x + e.w <= *rr && e.y + e.h <= *rb
+            })
+        });
+    }
 
     let yaml_texts: HashSet<String> = schema
         .elements
@@ -181,10 +234,14 @@ fn parse_uiautomator_xml(xml: &str) -> Result<Vec<A11yElement>, String> {
                 continue;
             };
 
+            let (x, y, w, h) = parse_bounds_from_node(node_str);
             elements.push(A11yElement {
                 text: label,
                 class,
-                bounds,
+                x,
+                y,
+                w,
+                h,
             });
             pos = end + 1;
         } else {
@@ -201,6 +258,30 @@ fn extract_attr(node: &str, attr: &str) -> Option<String> {
     let rest = &node[start..];
     let end = rest.find('"')?;
     Some(rest[..end].to_string())
+}
+
+fn parse_bounds_from_node(node: &str) -> (i32, i32, i32, i32) {
+    // WDA format: x="10" y="20" width="100" height="50"
+    if let (Some(x), Some(y), Some(w), Some(h)) = (
+        extract_attr(node, "x").and_then(|v| v.parse::<i32>().ok()),
+        extract_attr(node, "y").and_then(|v| v.parse::<i32>().ok()),
+        extract_attr(node, "width").and_then(|v| v.parse::<i32>().ok()),
+        extract_attr(node, "height").and_then(|v| v.parse::<i32>().ok()),
+    ) {
+        return (x, y, w, h);
+    }
+    // uiautomator format: bounds="[x1,y1][x2,y2]"
+    if let Some(bounds) = extract_attr(node, "bounds") {
+        let nums: Vec<i32> = bounds
+            .split(|c: char| !c.is_ascii_digit() && c != '-')
+            .filter(|s| !s.is_empty())
+            .filter_map(|s| s.parse().ok())
+            .collect();
+        if nums.len() >= 4 {
+            return (nums[0], nums[1], nums[2] - nums[0], nums[3] - nums[1]);
+        }
+    }
+    (0, 0, 0, 0)
 }
 
 fn parse_wda_json(json_str: &str) -> Result<Vec<A11yElement>, String> {
@@ -230,10 +311,17 @@ fn collect_wda_elements(value: &serde_json::Value, out: &mut Vec<A11yElement>) {
             .to_string();
 
         if !label.is_empty() {
+            let x = obj.get("x").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+            let y = obj.get("y").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+            let w = obj.get("width").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+            let h = obj.get("height").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
             out.push(A11yElement {
                 text: label,
                 class: elem_type,
-                bounds: String::new(),
+                x,
+                y,
+                w,
+                h,
             });
         }
 
