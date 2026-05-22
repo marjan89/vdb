@@ -3,6 +3,7 @@ mod diff;
 mod overlay;
 mod render;
 mod validate;
+mod validate_content;
 
 use clap::{Parser, Subcommand};
 
@@ -25,6 +26,9 @@ pub enum Command {
     Overlay(overlay::OverlayArgs),
     /// Per-element djb2 color fingerprint validation
     Validate(validate::ValidateArgs),
+    /// Cross-reference YAML content against accessibility dump
+    #[command(name = "validate-content")]
+    ValidateContent(validate_content::ValidateContentArgs),
 }
 
 pub fn run(cli: Cli) -> Result<(), String> {
@@ -34,5 +38,6 @@ pub fn run(cli: Cli) -> Result<(), String> {
         Command::Compare(args) => compare::run(args),
         Command::Overlay(args) => overlay::run(args),
         Command::Validate(args) => validate::run(args),
+        Command::ValidateContent(args) => validate_content::run(args),
     }
 }
