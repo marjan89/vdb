@@ -166,12 +166,14 @@ pub fn run(args: ValidateArgs) -> Result<(), String> {
             continue;
         }
 
-        // Compute occlusion from ALL higher-z elements (including containers)
-        let visible = visible_fraction_all(elem, &all_elements);
+        // Compute occlusion from higher-z siblings AND viewport clipping
+        let viewport_visible = viewport_visible_fraction(elem, viewport_w, viewport_h);
+        let sibling_visible = visible_fraction_all(elem, &all_elements);
+        let visible = (viewport_visible * sibling_visible).max(0.0);
 
-        if visible < 0.05 {
+        if visible < 0.30 {
             println!(
-                "  {:30} SKIP (occluded {:.0}% visible)",
+                "  {:30} SKIP ({:.0}% visible)",
                 display_id,
                 visible * 100.0
             );
@@ -191,13 +193,13 @@ pub fn run(args: ValidateArgs) -> Result<(), String> {
             0.0
         };
 
-        let adjusted = if visible < 0.95 {
-            (overlap / visible).min(100.0)
+        let effective_threshold = if visible < 0.95 {
+            (args.threshold * visible).max(10.0)
         } else {
-            overlap
+            args.threshold
         };
 
-        let status = if adjusted >= args.threshold {
+        let status = if overlap >= effective_threshold {
             "PASS"
         } else {
             "FAIL"
@@ -208,8 +210,8 @@ pub fn run(args: ValidateArgs) -> Result<(), String> {
 
         if visible < 0.95 {
             println!(
-                "  {:30} {} ({} overlap {:.0}%, {:.0}% visible, adj {:.0}%)",
-                display_id, status, args.pass, overlap, visible * 100.0, adjusted
+                "  {:30} {} ({} overlap {:.0}%, {:.0}% visible, thresh {:.0}%)",
+                display_id, status, args.pass, overlap, visible * 100.0, effective_threshold
             );
         } else {
             println!(
@@ -454,6 +456,26 @@ fn sample_stroke(
     }
 
     (match_count, total_samples)
+}
+
+fn viewport_visible_fraction(
+    elem: &crate::schema::SemanticElement,
+    viewport_w: i32,
+    viewport_h: i32,
+) -> f64 {
+    let total_area = (elem.bounds.w * elem.bounds.h) as f64;
+    if total_area <= 0.0 {
+        return 1.0;
+    }
+    let clipped_x = elem.bounds.x.max(0);
+    let clipped_y = elem.bounds.y.max(0);
+    let clipped_r = (elem.bounds.x + elem.bounds.w).min(viewport_w);
+    let clipped_b = (elem.bounds.y + elem.bounds.h).min(viewport_h);
+    if clipped_r <= clipped_x || clipped_b <= clipped_y {
+        return 0.0;
+    }
+    let visible_area = ((clipped_r - clipped_x) * (clipped_b - clipped_y)) as f64;
+    visible_area / total_area
 }
 
 fn visible_fraction_all(
