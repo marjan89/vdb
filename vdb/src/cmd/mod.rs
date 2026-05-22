@@ -4,6 +4,7 @@ mod overlay;
 mod render;
 mod validate;
 mod validate_content;
+mod validate_text;
 
 use clap::{Parser, Subcommand};
 
@@ -29,6 +30,9 @@ pub enum Command {
     /// Cross-reference YAML content against accessibility dump
     #[command(name = "validate-content")]
     ValidateContent(validate_content::ValidateContentArgs),
+    /// OCR text at element bounds, compare to YAML content
+    #[command(name = "validate-text")]
+    ValidateText(validate_text::ValidateTextArgs),
 }
 
 pub fn run(cli: Cli) -> Result<(), String> {
@@ -39,5 +43,6 @@ pub fn run(cli: Cli) -> Result<(), String> {
         Command::Overlay(args) => overlay::run(args),
         Command::Validate(args) => validate::run(args),
         Command::ValidateContent(args) => validate_content::run(args),
+        Command::ValidateText(args) => validate_text::run(args),
     }
 }
