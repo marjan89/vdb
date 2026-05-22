@@ -206,19 +206,30 @@ pub fn run(args: ValidateArgs) -> Result<(), String> {
 }
 
 fn auto_density(schema: &SemanticSchema, screenshot_width: u32) -> f64 {
-    let max_dp_x = schema
+    // Use the root container's width as the viewport (most reliable)
+    if let Some(root) = schema.elements.first() {
+        if root.bounds.w > 100 {
+            let d = screenshot_width as f64 / root.bounds.w as f64;
+            eprintln!("auto-density: {:.3} (from root element w={}dp)", d, root.bounds.w);
+            return d;
+        }
+    }
+    // Fallback: use 90th percentile of right-edges to exclude off-screen elements
+    let mut right_edges: Vec<i32> = schema
         .elements
         .iter()
-        .filter(|e| {
-            !matches!(
-                e.elem_type.as_str(),
-                "container" | "list" | "scroll" | "pager" | "view"
-            )
-        })
-        .map(|e| (e.bounds.x + e.bounds.w) as f64)
-        .fold(0.0f64, f64::max);
-    if max_dp_x > 100.0 {
-        screenshot_width as f64 / max_dp_x
+        .filter(|e| e.bounds.w > 0 && e.bounds.x >= 0)
+        .map(|e| e.bounds.x + e.bounds.w)
+        .collect();
+    right_edges.sort();
+    let idx = (right_edges.len() as f64 * 0.9) as usize;
+    let viewport_w = right_edges.get(idx.min(right_edges.len().saturating_sub(1)))
+        .copied()
+        .unwrap_or(390) as f64;
+    if viewport_w > 100.0 {
+        let d = screenshot_width as f64 / viewport_w;
+        eprintln!("auto-density: {:.3} (from 90th percentile w={}dp)", d, viewport_w);
+        d
     } else {
         3.0
     }
