@@ -103,7 +103,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
              CAPTURE_DIR / "android-sitedetail-screenshot.png"),
             ("iOS", "ios-sitedetail", CAPTURE_DIR / "ios-sitedetail.yaml",
              CAPTURE_DIR / "ios-sitedetail-screenshot.png"),
-            ("Figma", "figma-site", Path("/tmp/figma-site.yaml"), None),
+            ("Figma", "figma-site", Path("/tmp/figma-site.yaml"),
+             CAPTURE_DIR / "figma-sitedetail-screenshot.png"),
         ]
 
         all_regions = {}
