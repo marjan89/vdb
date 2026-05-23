@@ -140,7 +140,7 @@ pub fn run(args: ValidateArgs) -> Result<(), String> {
 
     println!("vdb validate results:\n");
 
-    for (i, elem) in elements.iter().enumerate() {
+    for (_i, elem) in elements.iter().enumerate() {
         let expected = djb2_color(effective_id(elem));
         let x = (elem.bounds.x as f64 * density) as i32;
         let y = (elem.bounds.y as f64 * density) as i32;
@@ -295,86 +295,6 @@ fn color_close(a: &Rgb<u8>, b: &Rgb<u8>, threshold: u8) -> bool {
     let dg = (a.0[1] as i16 - b.0[1] as i16).unsigned_abs() as u8;
     let db = (a.0[2] as i16 - b.0[2] as i16).unsigned_abs() as u8;
     dr <= threshold && dg <= threshold && db <= threshold
-}
-
-fn sample_center(
-    device: &RgbImage,
-    x: i32,
-    y: i32,
-    w: u32,
-    h: u32,
-    dw: u32,
-    dh: u32,
-    expected: &Rgb<u8>,
-    tol: u8,
-) -> (u32, u32) {
-    let mut match_count = 0u32;
-    let mut total_samples = 0u32;
-    let cx = (x + w as i32 / 2) as u32;
-    let cy = (y + h as i32 / 2) as u32;
-    let radius = 2u32;
-    for dy in cy.saturating_sub(radius)..=(cy + radius).min(dh - 1) {
-        for dx in cx.saturating_sub(radius)..=(cx + radius).min(dw - 1) {
-            if dx < dw && dy < dh {
-                total_samples += 1;
-                if color_close(device.get_pixel(dx, dy), expected, tol) {
-                    match_count += 1;
-                }
-            }
-        }
-    }
-    (match_count, total_samples)
-}
-
-fn sample_stroke_inset(
-    device: &RgbImage,
-    x: i32,
-    y: i32,
-    w: u32,
-    h: u32,
-    sw: u32,
-    dw: u32,
-    dh: u32,
-    expected: &Rgb<u8>,
-    tol: u8,
-) -> (u32, u32) {
-    let mut match_count = 0u32;
-    let mut total_samples = 0u32;
-    let inset = 1u32;
-
-    let sample = |px: u32, py: u32, mc: &mut u32, ts: &mut u32| {
-        if px < dw && py < dh {
-            *ts += 1;
-            if color_close(device.get_pixel(px, py), expected, tol) {
-                *mc += 1;
-            }
-        }
-    };
-
-    // Sample interior of top stroke (inset 1px from outer edge)
-    for dx in inset..w.saturating_sub(inset) {
-        for dy in inset..sw.min(h).saturating_sub(0) {
-            sample(
-                (x + dx as i32) as u32,
-                (y + dy as i32) as u32,
-                &mut match_count,
-                &mut total_samples,
-            );
-        }
-    }
-    // Sample interior of left stroke
-    for dy in sw..h.saturating_sub(sw) {
-        for dx in inset..(sw + inset).min(w) {
-            sample(
-                (x + dx as i32) as u32,
-                (y + dy as i32) as u32,
-                &mut match_count,
-                &mut total_samples,
-            );
-        }
-    }
-
-    (match_count, total_samples)
 }
 
 fn sample_fill(

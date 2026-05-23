@@ -278,8 +278,6 @@ fn parse_uiautomator_xml(xml: &str) -> Result<Vec<A11yElement>, String> {
             let class = extract_attr(node_str, "class")
                 .or_else(|| extract_attr(node_str, "type"))
                 .unwrap_or_default();
-            let bounds = extract_attr(node_str, "bounds").unwrap_or_default();
-
             let label = if !text.is_empty() {
                 text
             } else if !label_attr.is_empty() {
