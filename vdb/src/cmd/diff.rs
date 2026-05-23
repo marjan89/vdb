@@ -187,6 +187,22 @@ pub fn run(args: DiffArgs) -> Result<(), String> {
             }
         }
 
+        // Gradient
+        if let (Some(sg), Some(tg)) = (&m.src.gradient, &m.tgt.gradient) {
+            if sg.gradient_type != tg.gradient_type {
+                warnings.push(format!(
+                    "WRONG_GRADIENT_TYPE: {} — {}:{} {}:{}",
+                    id, src.platform, sg.gradient_type, tgt.platform, tg.gradient_type
+                ));
+            }
+            if sg.colors != tg.colors {
+                warnings.push(format!(
+                    "WRONG_GRADIENT_COLORS: {} — {}:{:?} {}:{:?}",
+                    id, src.platform, sg.colors, tgt.platform, tg.colors
+                ));
+            }
+        }
+
         // Border
         if let (Some(sb), Some(tb)) = (&m.src.border, &m.tgt.border) {
             if (sb.width - tb.width).abs() > 0.5 {
