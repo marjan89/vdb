@@ -187,6 +187,24 @@ pub fn run(args: DiffArgs) -> Result<(), String> {
             }
         }
 
+        // Border
+        if let (Some(sb), Some(tb)) = (&m.src.border, &m.tgt.border) {
+            if (sb.width - tb.width).abs() > 0.5 {
+                warnings.push(format!(
+                    "WRONG_BORDER_WIDTH: {} — {}:{}dp {}:{}dp",
+                    id, src.platform, sb.width, tgt.platform, tb.width
+                ));
+            }
+            if let (Some(sc), Some(tc)) = (&sb.color, &tb.color) {
+                if !colors_equal(sc, tc) {
+                    warnings.push(format!(
+                        "WRONG_BORDER_COLOR: {} — {}:{} {}:{}",
+                        id, src.platform, sc, tgt.platform, tc
+                    ));
+                }
+            }
+        }
+
         // Corner radius
         if let (Some(sr), Some(tr)) = (m.src.corner_radius, m.tgt.corner_radius) {
             if (sr - tr).abs() > 1.0 {
