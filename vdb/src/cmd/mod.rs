@@ -3,6 +3,7 @@ mod diff;
 mod overlay;
 mod render;
 mod validate;
+mod regions;
 mod validate_content;
 
 use clap::{Parser, Subcommand};
@@ -29,6 +30,8 @@ pub enum Command {
     /// Cross-reference YAML content against accessibility dump
     #[command(name = "validate-content")]
     ValidateContent(validate_content::ValidateContentArgs),
+    /// Auto-discover and match semantic regions
+    Regions(regions::RegionsArgs),
 }
 
 pub fn run(cli: Cli) -> Result<(), String> {
@@ -39,5 +42,6 @@ pub fn run(cli: Cli) -> Result<(), String> {
         Command::Overlay(args) => overlay::run(args),
         Command::Validate(args) => validate::run(args),
         Command::ValidateContent(args) => validate_content::run(args),
+        Command::Regions(args) => regions::run(args),
     }
 }
