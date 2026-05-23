@@ -512,7 +512,7 @@ def safe_num(s):
 
 if __name__ == "__main__":
     print(f"serving {CAPTURE_DIR} on http://localhost:{PORT}")
-    server = http.server.HTTPServer(("", PORT), Handler)
+    server = http.server.HTTPServer(("127.0.0.1", PORT), Handler)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
