@@ -35,15 +35,25 @@ def discover_regions(yaml_path):
         pass
     return []
 
-def get_density(yaml_path):
+def get_viewport(yaml_path):
+    width, height, density = 390, 844, 3.0
     try:
+        in_viewport = False
         with open(yaml_path) as f:
             for line in f:
-                if "density:" in line and "viewport" not in line:
-                    return float(line.split(":")[1].strip())
+                if line.strip() == "viewport:":
+                    in_viewport = True
+                elif in_viewport and line.strip().startswith("width:"):
+                    width = int(line.split(":")[1].strip())
+                elif in_viewport and line.strip().startswith("height:"):
+                    height = int(line.split(":")[1].strip())
+                elif in_viewport and line.strip().startswith("density:"):
+                    density = float(line.split(":")[1].strip())
+                elif in_viewport and not line.startswith(" "):
+                    in_viewport = False
     except Exception:
         pass
-    return 3.0
+    return width, height, density
 
 HTML = """<!DOCTYPE html>
 <html>
@@ -106,30 +116,28 @@ class Handler(http.server.BaseHTTPRequestHandler):
             for r in regions:
                 all_region_ids.add(r["id"])
 
-            density = get_density(yaml_path) if yaml_path.exists() else 3.0
+            vp_w, vp_h, density = get_viewport(yaml_path) if yaml_path.exists() else (390, 844, 3.0)
 
             boxes_html = ""
             for r in regions:
                 color = REGION_COLORS.get(r["id"], "#888")
                 b = r["bounds"]
-                # Scale bounds to match displayed image height (700px)
-                # Image natural height varies — use CSS percentage positioning
                 boxes_html += f'''<div class="region-box" style="
                     border-color:{color};
                     left:{b['x']}px; top:{b['y']}px;
                     width:{b['w']}px; height:{b['h']}px;
                     transform-origin: top left;
-                " data-density="{density}">
+                " data-vp-h="{vp_h}">
                     <span class="region-label" style="background:{color};color:#000">{r['id']}</span>
                 </div>'''
 
             img_src = f"/img/{img_path.name}" if img_path and img_path.exists() else ""
-            img_tag = f'<img src="{img_src}" onload="scaleBoxes(this)">' if img_src else '<div style="width:300px;height:700px;background:#333;display:flex;align-items:center;justify-content:center;color:#666">No screenshot</div>'
+            img_tag = f'<img src="{img_src}" onload="scaleBoxes(this)">' if img_src else f'<div style="width:300px;height:700px;background:#333;display:flex;align-items:center;justify-content:center;color:#666">No screenshot<br>({label})</div>'
 
             columns_html += f'''
             <div class="column">
                 <h2>{label} ({len(regions)} regions)</h2>
-                <div class="img-wrapper">{img_tag}{boxes_html}</div>
+                <div class="img-wrapper" style="overflow:hidden">{img_tag}{boxes_html}</div>
             </div>'''
 
         legend_html = ""
@@ -151,10 +159,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
 function scaleBoxes(img) {
     const wrapper = img.parentElement;
     const displayH = img.clientHeight;
-    const naturalH = img.naturalHeight;
     const boxes = wrapper.querySelectorAll('.region-box');
-    const density = parseFloat(boxes[0]?.dataset.density || '3');
-    const scale = displayH / (naturalH / density);
+    const vpH = parseFloat(boxes[0]?.dataset.vpH || '844');
+    const scale = displayH / vpH;
     boxes.forEach(box => {
         box.style.transform = 'scale(' + scale + ')';
     });
@@ -187,7 +194,7 @@ window.addEventListener('load', () => {
 
 if __name__ == "__main__":
     print(f"Regions demo: http://localhost:{PORT}")
-    server = http.server.HTTPServer(("", PORT), Handler)
+    server = http.server.HTTPServer(("127.0.0.1", PORT), Handler)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
