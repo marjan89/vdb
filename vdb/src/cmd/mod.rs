@@ -3,6 +3,7 @@ mod diff;
 mod overlay;
 mod render;
 pub mod tolerance;
+mod tolerances_infer;
 mod validate;
 mod regions;
 mod validate_content;
@@ -33,6 +34,9 @@ pub enum Command {
     ValidateContent(validate_content::ValidateContentArgs),
     /// Auto-discover and match semantic regions
     Regions(regions::RegionsArgs),
+    /// Infer tolerance values from matched elements across YAMLs
+    #[command(name = "tolerances-infer")]
+    TolerancesInfer(tolerances_infer::TolerancesInferArgs),
 }
 
 pub fn run(cli: Cli) -> Result<(), String> {
@@ -44,5 +48,6 @@ pub fn run(cli: Cli) -> Result<(), String> {
         Command::Validate(args) => validate::run(args),
         Command::ValidateContent(args) => validate_content::run(args),
         Command::Regions(args) => regions::run(args),
+        Command::TolerancesInfer(args) => tolerances_infer::run(args),
     }
 }

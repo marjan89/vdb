@@ -589,23 +589,27 @@ fn match_elements<'a>(
             }
             let tc_lower = tc.to_lowercase();
 
-            // Tier 1: exact case-insensitive
-            if sc_lower == tc_lower {
+            let w_ratio = se.bounds.w.max(1) as f64 / te.bounds.w.max(1) as f64;
+            let h_ratio = se.bounds.h.max(1) as f64 / te.bounds.h.max(1) as f64;
+            let size_mismatch = w_ratio > 3.0 || w_ratio < 0.33 || h_ratio > 3.0 || h_ratio < 0.33;
+
+            // Tier 1: exact case-insensitive (skip if size >3x different)
+            if sc_lower == tc_lower && !size_mismatch {
                 best = Some((ti, 300));
                 break;
             }
 
             // Tier 2: stripped counts match
             let tc_stripped = strip_dynamic_counts(&tc_lower);
-            if sc_stripped == tc_stripped && sc_stripped.len() >= 3 {
+            if sc_stripped == tc_stripped && sc_stripped.len() >= 3 && !size_mismatch {
                 best = Some((ti, 200));
                 break;
             }
 
-            // Tier 3: containment with >=70% length overlap
+            // Tier 3: containment with >=60% length overlap
             let shorter = sc_lower.len().min(tc_lower.len());
             let longer = sc_lower.len().max(tc_lower.len());
-            if shorter >= 3 && shorter * 100 / longer >= 60 {
+            if shorter >= 3 && shorter * 100 / longer >= 60 && !size_mismatch {
                 if sc_lower.contains(&tc_lower) || tc_lower.contains(&sc_lower) {
                     let score = 100 + (shorter * 100 / longer) as u32;
                     if best.map_or(true, |(_, bs)| score > bs) {
