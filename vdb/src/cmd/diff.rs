@@ -66,6 +66,9 @@ pub fn run(args: DiffArgs) -> Result<(), String> {
         None => None,
     };
 
+    src.elements.retain(|e| !is_generated_container(e));
+    tgt.elements.retain(|e| !is_generated_container(e));
+
     if args.accessible_only {
         src.elements.retain(|e| e.accessible == Some(true));
         tgt.elements.retain(|e| e.accessible == Some(true));
@@ -713,6 +716,33 @@ fn match_elements<'a>(
         .collect();
 
     (matches, unmatched_src, unmatched_tgt)
+}
+
+fn is_generated_container(e: &SemanticElement) -> bool {
+    if e.elem_type != "container" && e.elem_type != "view" {
+        return false;
+    }
+    if e.content.is_some() {
+        return false;
+    }
+    let id = &e.id;
+    if id.is_empty() {
+        return false;
+    }
+    lazy_static_regex(id)
+}
+
+fn lazy_static_regex(id: &str) -> bool {
+    let lower = id.to_lowercase();
+    let prefixes = [
+        "linearlayout", "constraintlayout", "framelayout", "relativelayout",
+        "cardview", "recyclerview", "nestedscrollview", "scrollview",
+        "appbarlayout", "coordinatorlayout", "collapsingtoolbar",
+    ];
+    if !prefixes.iter().any(|p| lower.starts_with(p)) {
+        return false;
+    }
+    id.chars().any(|c| c == '_') && id.chars().any(|c| c.is_ascii_digit())
 }
 
 fn is_root_container(id: &str) -> bool {
