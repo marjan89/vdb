@@ -1,6 +1,4 @@
 use clap::Args;
-use fuzzy_matcher::skim::SkimMatcherV2;
-use fuzzy_matcher::FuzzyMatcher;
 
 use crate::schema::{SemanticElement, SemanticSchema};
 
@@ -373,7 +371,7 @@ pub fn run(args: DiffArgs) -> Result<(), String> {
             let pos_drift = dx.max(dy);
             let pos_pct = pos_drift / viewport_w * 100.0;
             let within_pos = tol.as_ref().map_or(pos_drift <= 4.0, |t| pos_pct <= t.spatial_pct);
-            if pos_drift > 2.0 {
+            if pos_drift > 2.0 && pos_pct <= 200.0 {
                 diags.push(Diagnostic {
                     severity: if within_pos { Severity::Info } else { Severity::Warning },
                     message: format!(
@@ -558,10 +556,7 @@ fn match_elements<'a>(
         }
     }
 
-    // Pass 2: fuzzy content matching (scored, best-match pairing)
-    let matcher = SkimMatcherV2::default();
-    let min_score: i64 = 50;
-
+    // Pass 2: content matching (case-insensitive exact, stripped counts, containment)
     for (si, se) in src.iter().enumerate() {
         if src_matched[si] {
             continue;
@@ -573,7 +568,10 @@ fn match_elements<'a>(
         if sc.len() < 2 {
             continue;
         }
-        let mut best: Option<(usize, i64)> = None;
+        let sc_lower = sc.to_lowercase();
+        let sc_stripped = strip_dynamic_counts(&sc_lower);
+
+        let mut best: Option<(usize, u32)> = None;
         for (ti, te) in tgt.iter().enumerate() {
             if tgt_matched[ti] {
                 continue;
@@ -585,32 +583,50 @@ fn match_elements<'a>(
             if tc.len() < 2 {
                 continue;
             }
-            let sc_lower = sc.to_lowercase();
             let tc_lower = tc.to_lowercase();
-            let score = matcher
-                .fuzzy_match(&tc_lower, &sc_lower)
-                .or_else(|| matcher.fuzzy_match(&sc_lower, &tc_lower))
-                .unwrap_or(0);
-            if score >= min_score {
-                if best.map_or(true, |(_, bs)| score > bs) {
-                    best = Some((ti, score));
+
+            // Tier 1: exact case-insensitive
+            if sc_lower == tc_lower {
+                best = Some((ti, 300));
+                break;
+            }
+
+            // Tier 2: stripped counts match
+            let tc_stripped = strip_dynamic_counts(&tc_lower);
+            if sc_stripped == tc_stripped && sc_stripped.len() >= 3 {
+                best = Some((ti, 200));
+                break;
+            }
+
+            // Tier 3: containment with >=70% length overlap
+            let shorter = sc_lower.len().min(tc_lower.len());
+            let longer = sc_lower.len().max(tc_lower.len());
+            if shorter >= 3 && shorter * 100 / longer >= 60 {
+                if sc_lower.contains(&tc_lower) || tc_lower.contains(&sc_lower) {
+                    let score = 100 + (shorter * 100 / longer) as u32;
+                    if best.map_or(true, |(_, bs)| score > bs) {
+                        best = Some((ti, score));
+                    }
                 }
             }
         }
-        if let Some((ti, _score)) = best {
+        if let Some((ti, _)) = best {
             matches.push(Match {
                 src: se,
                 tgt: &tgt[ti],
-                method: "fuzzy",
+                method: "content",
             });
             src_matched[si] = true;
             tgt_matched[ti] = true;
         }
     }
 
-    // Pass 5: type + position proximity (within 20dp)
+    // Pass 3: type + position proximity (within 20dp, non-text only)
     for (si, se) in src.iter().enumerate() {
         if src_matched[si] {
+            continue;
+        }
+        if se.elem_type == "text" || se.elem_type == "button" {
             continue;
         }
         let mut best: Option<(usize, i32)> = None;
