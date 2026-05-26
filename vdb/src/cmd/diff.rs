@@ -553,7 +553,7 @@ fn match_elements<'a>(
         }
     }
 
-    // Pass 2: match by content text (exact, decoded)
+    // Pass 2: content exact (case-sensitive, same type)
     for (si, se) in src.iter().enumerate() {
         if src_matched[si] {
             continue;
@@ -586,7 +586,88 @@ fn match_elements<'a>(
         }
     }
 
-    // Pass 3: match by type + position proximity (within 20dp)
+    // Pass 3: content case-insensitive (any type)
+    for (si, se) in src.iter().enumerate() {
+        if src_matched[si] {
+            continue;
+        }
+        let sc = match &se.content {
+            Some(c) => decode(c).to_lowercase(),
+            None => continue,
+        };
+        if sc.is_empty() {
+            continue;
+        }
+        for (ti, te) in tgt.iter().enumerate() {
+            if tgt_matched[ti] {
+                continue;
+            }
+            let tc = match &te.content {
+                Some(c) => decode(c).to_lowercase(),
+                None => continue,
+            };
+            if sc == tc {
+                matches.push(Match {
+                    src: se,
+                    tgt: te,
+                    method: "content-icase",
+                });
+                src_matched[si] = true;
+                tgt_matched[ti] = true;
+                break;
+            }
+        }
+    }
+
+    // Pass 4: content containment — one text contains the other (case-insensitive, min 3 chars)
+    for (si, se) in src.iter().enumerate() {
+        if src_matched[si] {
+            continue;
+        }
+        let sc = match &se.content {
+            Some(c) => decode(c).to_lowercase(),
+            None => continue,
+        };
+        if sc.len() < 3 {
+            continue;
+        }
+        let mut best: Option<(usize, usize)> = None;
+        for (ti, te) in tgt.iter().enumerate() {
+            if tgt_matched[ti] {
+                continue;
+            }
+            let tc = match &te.content {
+                Some(c) => decode(c).to_lowercase(),
+                None => continue,
+            };
+            if tc.len() < 3 {
+                continue;
+            }
+            let contained = sc.contains(&tc) || tc.contains(&sc);
+            if !contained {
+                continue;
+            }
+            let shorter = sc.len().min(tc.len());
+            let longer = sc.len().max(tc.len());
+            let overlap = shorter * 100 / longer;
+            if overlap >= 40 {
+                if best.map_or(true, |(_, bo)| overlap > bo) {
+                    best = Some((ti, overlap));
+                }
+            }
+        }
+        if let Some((ti, _)) = best {
+            matches.push(Match {
+                src: se,
+                tgt: &tgt[ti],
+                method: "content-fuzzy",
+            });
+            src_matched[si] = true;
+            tgt_matched[ti] = true;
+        }
+    }
+
+    // Pass 5: type + position proximity (within 20dp)
     for (si, se) in src.iter().enumerate() {
         if src_matched[si] {
             continue;
