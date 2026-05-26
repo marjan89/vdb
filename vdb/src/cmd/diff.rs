@@ -132,12 +132,17 @@ pub fn run(args: DiffArgs) -> Result<(), String> {
         });
     }
 
+    let mut pass_count: usize = 0;
+
     for m in &matches {
         let id = if !m.src.id.is_empty() {
             &m.src.id
         } else {
             m.src.content.as_deref().unwrap_or("(unnamed)")
         };
+
+        let is_root = is_root_container(&m.src.id) || is_root_container(&m.tgt.id);
+        let diag_count_before = diags.len();
 
         // Text content — always exact match
         let sc = m.src.content.as_deref().map(decode);
@@ -353,54 +358,62 @@ pub fn run(args: DiffArgs) -> Result<(), String> {
             }
         }
 
-        // Bounds / spacing — percentage of viewport width
-        let dx = (m.src.bounds.x - m.tgt.bounds.x).abs() as f64;
-        let dy = (m.src.bounds.y - m.tgt.bounds.y).abs() as f64;
-        let dw = (m.src.bounds.w - m.tgt.bounds.w).abs() as f64;
-        let dh = (m.src.bounds.h - m.tgt.bounds.h).abs() as f64;
+        // Bounds / spacing — skip root containers (viewport wrappers)
+        if !is_root {
+            let dx = (m.src.bounds.x - m.tgt.bounds.x).abs() as f64;
+            let dy = (m.src.bounds.y - m.tgt.bounds.y).abs() as f64;
+            let dw = (m.src.bounds.w - m.tgt.bounds.w).abs() as f64;
+            let dh = (m.src.bounds.h - m.tgt.bounds.h).abs() as f64;
 
-        let pos_drift = dx.max(dy);
-        let pos_pct = pos_drift / viewport_w * 100.0;
-        let within_pos = tol.as_ref().map_or(pos_drift <= 4.0, |t| pos_pct <= t.spatial_pct);
-        if pos_drift > 2.0 {
-            diags.push(Diagnostic {
-                severity: if within_pos { Severity::Info } else { Severity::Warning },
-                message: format!(
-                    "SPACING: {} — {}:({},{}) {}:({},{}) ({:.0}dp={:.1}%vw{})",
-                    id,
-                    src.platform,
-                    m.src.bounds.x,
-                    m.src.bounds.y,
-                    tgt.platform,
-                    m.tgt.bounds.x,
-                    m.tgt.bounds.y,
-                    pos_drift,
-                    pos_pct,
-                    if within_pos { " within tolerance" } else { " VIOLATION" }
-                ),
-            });
+            let pos_drift = dx.max(dy);
+            let pos_pct = pos_drift / viewport_w * 100.0;
+            let within_pos = tol.as_ref().map_or(pos_drift <= 4.0, |t| pos_pct <= t.spatial_pct);
+            if pos_drift > 2.0 {
+                diags.push(Diagnostic {
+                    severity: if within_pos { Severity::Info } else { Severity::Warning },
+                    message: format!(
+                        "SPACING: {} — {}:({},{}) {}:({},{}) ({:.0}dp={:.1}%vw{})",
+                        id,
+                        src.platform,
+                        m.src.bounds.x,
+                        m.src.bounds.y,
+                        tgt.platform,
+                        m.tgt.bounds.x,
+                        m.tgt.bounds.y,
+                        pos_drift,
+                        pos_pct,
+                        if within_pos { " within tolerance" } else { " VIOLATION" }
+                    ),
+                });
+            }
+
+            let size_drift = dw.max(dh);
+            let size_pct = size_drift / viewport_w * 100.0;
+            let within_size =
+                tol.as_ref().map_or(size_drift <= 8.0, |t| size_pct <= t.spatial_pct);
+            if size_drift > 2.0 {
+                diags.push(Diagnostic {
+                    severity: if within_size { Severity::Info } else { Severity::Warning },
+                    message: format!(
+                        "SIZE: {} — {}:{}x{} {}:{}x{} ({:.0}dp={:.1}%vw{})",
+                        id,
+                        src.platform,
+                        m.src.bounds.w,
+                        m.src.bounds.h,
+                        tgt.platform,
+                        m.tgt.bounds.w,
+                        m.tgt.bounds.h,
+                        size_drift,
+                        size_pct,
+                        if within_size { " within tolerance" } else { " VIOLATION" }
+                    ),
+                });
+            }
         }
 
-        let size_drift = dw.max(dh);
-        let size_pct = size_drift / viewport_w * 100.0;
-        let within_size = tol.as_ref().map_or(size_drift <= 8.0, |t| size_pct <= t.spatial_pct);
-        if size_drift > 2.0 {
-            diags.push(Diagnostic {
-                severity: if within_size { Severity::Info } else { Severity::Warning },
-                message: format!(
-                    "SIZE: {} — {}:{}x{} {}:{}x{} ({:.0}dp={:.1}%vw{})",
-                    id,
-                    src.platform,
-                    m.src.bounds.w,
-                    m.src.bounds.h,
-                    tgt.platform,
-                    m.tgt.bounds.w,
-                    m.tgt.bounds.h,
-                    size_drift,
-                    size_pct,
-                    if within_size { " within tolerance" } else { " VIOLATION" }
-                ),
-            });
+        let diag_count_after = diags.len();
+        if diag_count_before == diag_count_after {
+            pass_count += 1;
         }
     }
 
@@ -488,8 +501,8 @@ pub fn run(args: DiffArgs) -> Result<(), String> {
 
     if tol.is_some() {
         println!(
-            "SUMMARY: {} violations, {} within tolerance",
-            violations, suppressed
+            "SUMMARY: {} pass, {} violations, {} within tolerance",
+            pass_count, violations, suppressed
         );
     }
 
@@ -617,6 +630,24 @@ fn match_elements<'a>(
         .collect();
 
     (matches, unmatched_src, unmatched_tgt)
+}
+
+fn is_root_container(id: &str) -> bool {
+    const ROOT_IDS: &[&str] = &[
+        "decorview",
+        "framelayout",
+        "action_bar_root",
+        "content",
+        "coordinatorlayout",
+        "linearlayout_0_0",
+        "framelayout_0_0_0",
+        "framelayout_0_0_1",
+    ];
+    if id.is_empty() {
+        return false;
+    }
+    let lower = id.to_lowercase();
+    ROOT_IDS.iter().any(|r| lower.starts_with(r))
 }
 
 fn colors_equal(a: &str, b: &str) -> bool {
