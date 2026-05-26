@@ -2,6 +2,7 @@ mod compare;
 mod diff;
 mod overlay;
 mod render;
+pub mod tolerance;
 mod validate;
 mod regions;
 mod validate_content;

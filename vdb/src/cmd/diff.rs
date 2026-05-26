@@ -2,6 +2,8 @@ use clap::Args;
 
 use crate::schema::{SemanticElement, SemanticSchema};
 
+use super::tolerance::{delta_e_cie2000, Tolerances};
+
 #[derive(Args)]
 pub struct DiffArgs {
     /// Source schema YAML (left / reference)
@@ -16,6 +18,10 @@ pub struct DiffArgs {
     /// Only compare accessible elements (accessible: true)
     #[arg(long)]
     pub accessible_only: bool,
+
+    /// Manifest YAML with tolerances section
+    #[arg(long)]
+    pub tolerances: Option<String>,
 }
 
 struct Match<'a> {
@@ -23,6 +29,18 @@ struct Match<'a> {
     tgt: &'a SemanticElement,
     #[allow(dead_code)]
     method: &'static str,
+}
+
+#[derive(Clone)]
+enum Severity {
+    Error,
+    Warning,
+    Info,
+}
+
+struct Diagnostic {
+    severity: Severity,
+    message: String,
 }
 
 pub fn run(args: DiffArgs) -> Result<(), String> {
@@ -36,19 +54,39 @@ pub fn run(args: DiffArgs) -> Result<(), String> {
     let mut tgt: SemanticSchema =
         serde_yaml::from_str(&tgt_content).map_err(|e| format!("parse target: {e}"))?;
 
+    let tol = match &args.tolerances {
+        Some(path) => {
+            let t = Tolerances::from_manifest(path)?;
+            eprintln!(
+                "tolerances: spatial={}% text_size={}% color=ΔE{} corner={}px border={}px",
+                t.spatial_pct, t.text_size_pct, t.color_delta_e, t.corner_radius_px, t.border_width_px
+            );
+            Some(t)
+        }
+        None => None,
+    };
+
     if args.accessible_only {
         src.elements.retain(|e| e.accessible == Some(true));
         tgt.elements.retain(|e| e.accessible == Some(true));
-        eprintln!("accessible-only: {} src, {} tgt elements", src.elements.len(), tgt.elements.len());
+        eprintln!(
+            "accessible-only: {} src, {} tgt elements",
+            src.elements.len(),
+            tgt.elements.len()
+        );
     }
+
+    let viewport_w = src
+        .viewport
+        .as_ref()
+        .map(|v| v.width as f64)
+        .or_else(|| tgt.viewport.as_ref().map(|v| v.width as f64))
+        .unwrap_or(400.0);
 
     let (matches, unmatched_src, unmatched_tgt) = match_elements(&src.elements, &tgt.elements);
 
-    let mut errors: Vec<String> = Vec::new();
-    let mut warnings: Vec<String> = Vec::new();
-    let mut infos: Vec<String> = Vec::new();
+    let mut diags: Vec<Diagnostic> = Vec::new();
 
-    // Missing elements (in source, not in target)
     for elem in &unmatched_src {
         let label = elem
             .content
@@ -59,16 +97,18 @@ pub fn run(args: DiffArgs) -> Result<(), String> {
         } else {
             format!(" ({}:{})", src.platform, elem.id)
         };
-        errors.push(format!(
-            "MISSING: \"{}\" {}{} — not found in {}",
-            decode(label),
-            elem.elem_type,
-            id_part,
-            tgt.platform
-        ));
+        diags.push(Diagnostic {
+            severity: Severity::Error,
+            message: format!(
+                "MISSING: \"{}\" {}{} — not found in {}",
+                decode(label),
+                elem.elem_type,
+                id_part,
+                tgt.platform
+            ),
+        });
     }
 
-    // Extra elements (in target, not in source)
     for elem in &unmatched_tgt {
         let label = elem
             .content
@@ -79,17 +119,19 @@ pub fn run(args: DiffArgs) -> Result<(), String> {
         } else {
             format!(" ({}:{})", tgt.platform, elem.id)
         };
-        infos.push(format!(
-            "EXTRA: \"{}\" {} in {}{} — not in {}",
-            decode(label),
-            elem.elem_type,
-            tgt.platform,
-            id_part,
-            src.platform
-        ));
+        diags.push(Diagnostic {
+            severity: Severity::Info,
+            message: format!(
+                "EXTRA: \"{}\" {} in {}{} — not in {}",
+                decode(label),
+                elem.elem_type,
+                tgt.platform,
+                id_part,
+                src.platform
+            ),
+        });
     }
 
-    // Compare matched pairs
     for m in &matches {
         let id = if !m.src.id.is_empty() {
             &m.src.id
@@ -97,26 +139,32 @@ pub fn run(args: DiffArgs) -> Result<(), String> {
             m.src.content.as_deref().unwrap_or("(unnamed)")
         };
 
-        // Text content
+        // Text content — always exact match
         let sc = m.src.content.as_deref().map(decode);
         let tc = m.tgt.content.as_deref().map(decode);
         if sc != tc {
-            errors.push(format!(
-                "WRONG_TEXT: {} — {}:\"{}\" {}:\"{}\"",
-                id,
-                src.platform,
-                sc.as_deref().unwrap_or("(none)"),
-                tgt.platform,
-                tc.as_deref().unwrap_or("(none)")
-            ));
+            diags.push(Diagnostic {
+                severity: Severity::Error,
+                message: format!(
+                    "WRONG_TEXT: {} — {}:\"{}\" {}:\"{}\"",
+                    id,
+                    src.platform,
+                    sc.as_deref().unwrap_or("(none)"),
+                    tgt.platform,
+                    tc.as_deref().unwrap_or("(none)")
+                ),
+            });
         }
 
-        // Element type
+        // Element type — always exact
         if m.src.elem_type != m.tgt.elem_type {
-            warnings.push(format!(
-                "WRONG_TYPE: {} — {}:{} {}:{}",
-                id, src.platform, m.src.elem_type, tgt.platform, m.tgt.elem_type
-            ));
+            diags.push(Diagnostic {
+                severity: Severity::Warning,
+                message: format!(
+                    "WRONG_TYPE: {} — {}:{} {}:{}",
+                    id, src.platform, m.src.elem_type, tgt.platform, m.tgt.elem_type
+                ),
+            });
         }
 
         // Color / foreground
@@ -124,147 +172,254 @@ pub fn run(args: DiffArgs) -> Result<(), String> {
         let tgt_fg = m.tgt.foreground.as_ref().or(m.tgt.color.as_ref());
         if let (Some(sc), Some(tc)) = (src_fg, tgt_fg) {
             if !colors_equal(sc, tc) {
-                warnings.push(format!(
-                    "WRONG_COLOR: {} — {}:{} {}:{}",
-                    id, src.platform, sc, tgt.platform, tc
-                ));
+                let de = delta_e_cie2000(sc, tc);
+                let within = tol.as_ref().map_or(false, |t| de <= t.color_delta_e);
+                diags.push(Diagnostic {
+                    severity: if within { Severity::Info } else { Severity::Warning },
+                    message: format!(
+                        "WRONG_COLOR: {} — {}:{} {}:{} (ΔE={:.1}{})",
+                        id, src.platform, sc, tgt.platform, tc, de,
+                        if within { " within tolerance" } else { " VIOLATION" }
+                    ),
+                });
             }
         }
 
         // Font
         if let (Some(sf), Some(tf)) = (&m.src.font, &m.tgt.font) {
-            if sf.family != tf.family || sf.weight != tf.weight {
-                warnings.push(format!(
-                    "WRONG_FONT: {} — {}:{}-{} {}:{}-{}",
-                    id, src.platform, sf.family, sf.weight, tgt.platform, tf.family, tf.weight
-                ));
+            // Font family — informational (cross-platform names differ)
+            if !sf.family.is_empty()
+                && !tf.family.is_empty()
+                && sf.family.to_lowercase() != tf.family.to_lowercase()
+            {
+                diags.push(Diagnostic {
+                    severity: Severity::Info,
+                    message: format!(
+                        "DIFF_FONT_FAMILY: {} — {}:{} {}:{}",
+                        id, src.platform, sf.family, tgt.platform, tf.family
+                    ),
+                });
             }
-            if (sf.size - tf.size).abs() > 1.0 && sf.size > 0.0 && tf.size > 0.0 {
-                warnings.push(format!(
-                    "WRONG_FONT_SIZE: {} — {}:{}sp {}:{}sp",
-                    id, src.platform, sf.size, tgt.platform, tf.size
-                ));
+
+            // Font weight
+            if !sf.weight.is_empty() && !tf.weight.is_empty() && sf.weight != tf.weight {
+                diags.push(Diagnostic {
+                    severity: Severity::Warning,
+                    message: format!(
+                        "WRONG_FONT_WEIGHT: {} — {}:{} {}:{} VIOLATION",
+                        id, src.platform, sf.weight, tgt.platform, tf.weight
+                    ),
+                });
+            }
+
+            // Font size
+            if sf.size > 0.0 && tf.size > 0.0 {
+                let diff = (sf.size - tf.size).abs();
+                let pct = diff / sf.size.max(tf.size) * 100.0;
+                let within = tol.as_ref().map_or(diff <= 1.0, |t| pct <= t.text_size_pct);
+                if diff > 0.5 {
+                    diags.push(Diagnostic {
+                        severity: if within { Severity::Info } else { Severity::Warning },
+                        message: format!(
+                            "WRONG_FONT_SIZE: {} — {}:{}sp {}:{}sp ({:.1}%{})",
+                            id, src.platform, sf.size, tgt.platform, tf.size, pct,
+                            if within { " within tolerance" } else { " VIOLATION" }
+                        ),
+                    });
+                }
             }
         }
 
         // Background
         if let (Some(sb), Some(tb)) = (&m.src.background, &m.tgt.background) {
             if !colors_equal(sb, tb) {
-                warnings.push(format!(
-                    "WRONG_BACKGROUND: {} — {}:{} {}:{}",
-                    id, src.platform, sb, tgt.platform, tb
-                ));
+                let de = delta_e_cie2000(sb, tb);
+                let within = tol.as_ref().map_or(false, |t| de <= t.color_delta_e);
+                diags.push(Diagnostic {
+                    severity: if within { Severity::Info } else { Severity::Warning },
+                    message: format!(
+                        "WRONG_BACKGROUND: {} — {}:{} {}:{} (ΔE={:.1}{})",
+                        id, src.platform, sb, tgt.platform, tb, de,
+                        if within { " within tolerance" } else { " VIOLATION" }
+                    ),
+                });
             }
         }
 
         // Icon
         if let (Some(si), Some(ti)) = (&m.src.icon, &m.tgt.icon) {
             if si.paths != ti.paths && !si.paths.is_empty() && !ti.paths.is_empty() {
-                warnings.push(format!(
-                    "WRONG_ICON: {} — pathData differs ({} vs {})",
-                    id, si.name, ti.name
-                ));
+                diags.push(Diagnostic {
+                    severity: Severity::Warning,
+                    message: format!(
+                        "WRONG_ICON: {} — pathData differs ({} vs {})",
+                        id, si.name, ti.name
+                    ),
+                });
             }
         }
 
         // Line count
         if let (Some(sl), Some(tl)) = (m.src.line_count, m.tgt.line_count) {
             if sl != tl {
-                warnings.push(format!(
-                    "WRONG_LINE_COUNT: {} — {}:{} {}:{}",
-                    id, src.platform, sl, tgt.platform, tl
-                ));
+                diags.push(Diagnostic {
+                    severity: Severity::Warning,
+                    message: format!(
+                        "WRONG_LINE_COUNT: {} — {}:{} {}:{}",
+                        id, src.platform, sl, tgt.platform, tl
+                    ),
+                });
             }
         }
 
         // Truncated
         if let (Some(st), Some(tt)) = (m.src.truncated, m.tgt.truncated) {
             if st != tt {
-                warnings.push(format!(
-                    "WRONG_TRUNCATED: {} — {}:{} {}:{}",
-                    id, src.platform, st, tgt.platform, tt
-                ));
+                diags.push(Diagnostic {
+                    severity: Severity::Warning,
+                    message: format!(
+                        "WRONG_TRUNCATED: {} — {}:{} {}:{}",
+                        id, src.platform, st, tgt.platform, tt
+                    ),
+                });
             }
         }
 
         // Gradient
         if let (Some(sg), Some(tg)) = (&m.src.gradient, &m.tgt.gradient) {
             if sg.gradient_type != tg.gradient_type {
-                warnings.push(format!(
-                    "WRONG_GRADIENT_TYPE: {} — {}:{} {}:{}",
-                    id, src.platform, sg.gradient_type, tgt.platform, tg.gradient_type
-                ));
+                diags.push(Diagnostic {
+                    severity: Severity::Warning,
+                    message: format!(
+                        "WRONG_GRADIENT_TYPE: {} — {}:{} {}:{}",
+                        id, src.platform, sg.gradient_type, tgt.platform, tg.gradient_type
+                    ),
+                });
             }
             if sg.colors != tg.colors {
-                warnings.push(format!(
-                    "WRONG_GRADIENT_COLORS: {} — {}:{:?} {}:{:?}",
-                    id, src.platform, sg.colors, tgt.platform, tg.colors
-                ));
+                diags.push(Diagnostic {
+                    severity: Severity::Warning,
+                    message: format!(
+                        "WRONG_GRADIENT_COLORS: {} — {}:{:?} {}:{:?}",
+                        id, src.platform, sg.colors, tgt.platform, tg.colors
+                    ),
+                });
             }
         }
 
-        // Border
+        // Border width
         if let (Some(sb), Some(tb)) = (&m.src.border, &m.tgt.border) {
-            if (sb.width - tb.width).abs() > 0.5 {
-                warnings.push(format!(
-                    "WRONG_BORDER_WIDTH: {} — {}:{}dp {}:{}dp",
-                    id, src.platform, sb.width, tgt.platform, tb.width
-                ));
+            let diff = (sb.width - tb.width).abs();
+            let within = tol.as_ref().map_or(diff <= 0.5, |t| diff <= t.border_width_px);
+            if diff > 0.1 {
+                diags.push(Diagnostic {
+                    severity: if within { Severity::Info } else { Severity::Warning },
+                    message: format!(
+                        "WRONG_BORDER_WIDTH: {} — {}:{}dp {}:{}dp (Δ{:.1}dp{})",
+                        id, src.platform, sb.width, tgt.platform, tb.width, diff,
+                        if within { " within tolerance" } else { " VIOLATION" }
+                    ),
+                });
             }
             if let (Some(sc), Some(tc)) = (&sb.color, &tb.color) {
                 if !colors_equal(sc, tc) {
-                    warnings.push(format!(
-                        "WRONG_BORDER_COLOR: {} — {}:{} {}:{}",
-                        id, src.platform, sc, tgt.platform, tc
-                    ));
+                    let de = delta_e_cie2000(sc, tc);
+                    let within = tol.as_ref().map_or(false, |t| de <= t.color_delta_e);
+                    diags.push(Diagnostic {
+                        severity: if within { Severity::Info } else { Severity::Warning },
+                        message: format!(
+                            "WRONG_BORDER_COLOR: {} — {}:{} {}:{} (ΔE={:.1}{})",
+                            id, src.platform, sc, tgt.platform, tc, de,
+                            if within { " within tolerance" } else { " VIOLATION" }
+                        ),
+                    });
                 }
             }
         }
 
         // Corner radius
         if let (Some(sr), Some(tr)) = (m.src.corner_radius, m.tgt.corner_radius) {
-            if (sr - tr).abs() > 1.0 {
-                warnings.push(format!(
-                    "WRONG_RADIUS: {} — {}:{}dp {}:{}dp",
-                    id, src.platform, sr, tgt.platform, tr
-                ));
+            let diff = (sr - tr).abs();
+            let within = tol.as_ref().map_or(diff <= 1.0, |t| diff <= t.corner_radius_px);
+            if diff > 0.1 {
+                diags.push(Diagnostic {
+                    severity: if within { Severity::Info } else { Severity::Warning },
+                    message: format!(
+                        "WRONG_RADIUS: {} — {}:{}dp {}:{}dp (Δ{:.1}dp{})",
+                        id, src.platform, sr, tgt.platform, tr, diff,
+                        if within { " within tolerance" } else { " VIOLATION" }
+                    ),
+                });
             }
         }
 
-        // Bounds / spacing
-        let dx = (m.src.bounds.x - m.tgt.bounds.x).abs();
-        let dy = (m.src.bounds.y - m.tgt.bounds.y).abs();
-        let dw = (m.src.bounds.w - m.tgt.bounds.w).abs();
-        let dh = (m.src.bounds.h - m.tgt.bounds.h).abs();
-        if dx > 4 || dy > 4 {
-            infos.push(format!(
-                "SPACING: {} — {}:({},{}) {}:({},{}) ({}dp drift)",
-                id,
-                src.platform,
-                m.src.bounds.x,
-                m.src.bounds.y,
-                tgt.platform,
-                m.tgt.bounds.x,
-                m.tgt.bounds.y,
-                dx.max(dy)
-            ));
+        // Bounds / spacing — percentage of viewport width
+        let dx = (m.src.bounds.x - m.tgt.bounds.x).abs() as f64;
+        let dy = (m.src.bounds.y - m.tgt.bounds.y).abs() as f64;
+        let dw = (m.src.bounds.w - m.tgt.bounds.w).abs() as f64;
+        let dh = (m.src.bounds.h - m.tgt.bounds.h).abs() as f64;
+
+        let pos_drift = dx.max(dy);
+        let pos_pct = pos_drift / viewport_w * 100.0;
+        let within_pos = tol.as_ref().map_or(pos_drift <= 4.0, |t| pos_pct <= t.spatial_pct);
+        if pos_drift > 2.0 {
+            diags.push(Diagnostic {
+                severity: if within_pos { Severity::Info } else { Severity::Warning },
+                message: format!(
+                    "SPACING: {} — {}:({},{}) {}:({},{}) ({:.0}dp={:.1}%vw{})",
+                    id,
+                    src.platform,
+                    m.src.bounds.x,
+                    m.src.bounds.y,
+                    tgt.platform,
+                    m.tgt.bounds.x,
+                    m.tgt.bounds.y,
+                    pos_drift,
+                    pos_pct,
+                    if within_pos { " within tolerance" } else { " VIOLATION" }
+                ),
+            });
         }
-        if dw > 8 || dh > 8 {
-            infos.push(format!(
-                "SIZE: {} — {}:{}x{} {}:{}x{} ({}dp delta)",
-                id,
-                src.platform,
-                m.src.bounds.w,
-                m.src.bounds.h,
-                tgt.platform,
-                m.tgt.bounds.w,
-                m.tgt.bounds.h,
-                dw.max(dh)
-            ));
+
+        let size_drift = dw.max(dh);
+        let size_pct = size_drift / viewport_w * 100.0;
+        let within_size = tol.as_ref().map_or(size_drift <= 8.0, |t| size_pct <= t.spatial_pct);
+        if size_drift > 2.0 {
+            diags.push(Diagnostic {
+                severity: if within_size { Severity::Info } else { Severity::Warning },
+                message: format!(
+                    "SIZE: {} — {}:{}x{} {}:{}x{} ({:.0}dp={:.1}%vw{})",
+                    id,
+                    src.platform,
+                    m.src.bounds.w,
+                    m.src.bounds.h,
+                    tgt.platform,
+                    m.tgt.bounds.w,
+                    m.tgt.bounds.h,
+                    size_drift,
+                    size_pct,
+                    if within_size { " within tolerance" } else { " VIOLATION" }
+                ),
+            });
         }
     }
 
-    // Output
+    let errors: Vec<&str> = diags
+        .iter()
+        .filter(|d| matches!(d.severity, Severity::Error))
+        .map(|d| d.message.as_str())
+        .collect();
+    let warnings: Vec<&str> = diags
+        .iter()
+        .filter(|d| matches!(d.severity, Severity::Warning))
+        .map(|d| d.message.as_str())
+        .collect();
+    let infos: Vec<&str> = diags
+        .iter()
+        .filter(|d| matches!(d.severity, Severity::Info))
+        .map(|d| d.message.as_str())
+        .collect();
+
     if args.json {
         let report = serde_json::json!({
             "source": { "platform": src.platform, "screen": src.screen, "device": src.device },
@@ -272,6 +427,7 @@ pub fn run(args: DiffArgs) -> Result<(), String> {
             "matched": matches.len(),
             "unmatched_source": unmatched_src.len(),
             "unmatched_target": unmatched_tgt.len(),
+            "tolerances_applied": tol.is_some(),
             "errors": errors,
             "warnings": warnings,
             "info": infos,
@@ -287,12 +443,26 @@ pub fn run(args: DiffArgs) -> Result<(), String> {
         "--- {} ({}) vs {} ({}) ---",
         src.platform, src.device, tgt.platform, tgt.device
     );
+    if tol.is_some() {
+        println!("tolerances: applied from manifest");
+    }
     println!(
         "matched: {}  unmatched: {} src, {} tgt\n",
         matches.len(),
         unmatched_src.len(),
         unmatched_tgt.len()
     );
+
+    let violations: usize = warnings
+        .iter()
+        .filter(|w| w.contains("VIOLATION"))
+        .count()
+        + errors.len();
+    let suppressed: usize = warnings
+        .iter()
+        .filter(|w| w.contains("within tolerance"))
+        .count()
+        + infos.iter().filter(|i| i.contains("within tolerance")).count();
 
     if !errors.is_empty() {
         println!("ERRORS ({}):", errors.len());
@@ -316,12 +486,18 @@ pub fn run(args: DiffArgs) -> Result<(), String> {
         println!();
     }
 
+    if tol.is_some() {
+        println!(
+            "SUMMARY: {} violations, {} within tolerance",
+            violations, suppressed
+        );
+    }
+
     if errors.is_empty() && warnings.is_empty() && infos.is_empty() {
         println!("MATCH: no differences found");
     }
 
-    let total = errors.len() + warnings.len();
-    if total > 0 {
+    if violations > 0 {
         std::process::exit(1);
     }
 
@@ -449,7 +625,6 @@ fn colors_equal(a: &str, b: &str) -> bool {
 
 fn normalize_color(hex: &str) -> String {
     let hex = hex.trim_start_matches('#').to_uppercase();
-    // Strip alpha from AARRGGBB
     if hex.len() == 8 {
         hex[2..].to_string()
     } else {
