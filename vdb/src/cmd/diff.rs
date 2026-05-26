@@ -66,8 +66,23 @@ pub fn run(args: DiffArgs) -> Result<(), String> {
         None => None,
     };
 
-    src.elements.retain(|e| !is_generated_container(e));
-    tgt.elements.retain(|e| !is_generated_container(e));
+    let viewport_w = src
+        .viewport
+        .as_ref()
+        .map(|v| v.width as f64)
+        .or_else(|| tgt.viewport.as_ref().map(|v| v.width as f64))
+        .unwrap_or(400.0);
+    let viewport_h = src
+        .viewport
+        .as_ref()
+        .map(|v| v.height as f64)
+        .or_else(|| tgt.viewport.as_ref().map(|v| v.height as f64))
+        .unwrap_or(800.0);
+
+    let vw = viewport_w;
+    let vh = viewport_h;
+    src.elements.retain(|e| !is_layout_wrapper(e, vw, vh));
+    tgt.elements.retain(|e| !is_layout_wrapper(e, vw, vh));
 
     if args.accessible_only {
         src.elements.retain(|e| e.accessible == Some(true));
@@ -78,13 +93,6 @@ pub fn run(args: DiffArgs) -> Result<(), String> {
             tgt.elements.len()
         );
     }
-
-    let viewport_w = src
-        .viewport
-        .as_ref()
-        .map(|v| v.width as f64)
-        .or_else(|| tgt.viewport.as_ref().map(|v| v.width as f64))
-        .unwrap_or(400.0);
 
     let (matches, unmatched_src, unmatched_tgt) = match_elements(&src.elements, &tgt.elements);
 
@@ -144,7 +152,7 @@ pub fn run(args: DiffArgs) -> Result<(), String> {
             m.src.content.as_deref().unwrap_or("(unnamed)")
         };
 
-        let is_root = is_root_container(&m.src.id) || is_root_container(&m.tgt.id);
+        let is_root = is_layout_wrapper(m.src, vw, vh) || is_layout_wrapper(m.tgt, vw, vh);
         let diag_count_before = diags.len();
 
         // Text content — always exact match
@@ -364,28 +372,24 @@ pub fn run(args: DiffArgs) -> Result<(), String> {
         // Bounds / spacing — skip root containers (viewport wrappers)
         if !is_root {
             let dx = (m.src.bounds.x - m.tgt.bounds.x).abs() as f64;
-            let dy = (m.src.bounds.y - m.tgt.bounds.y).abs() as f64;
             let dw = (m.src.bounds.w - m.tgt.bounds.w).abs() as f64;
             let dh = (m.src.bounds.h - m.tgt.bounds.h).abs() as f64;
 
-            let pos_drift = dx.max(dy);
-            let pos_pct = pos_drift / viewport_w * 100.0;
-            let within_pos = tol.as_ref().map_or(pos_drift <= 4.0, |t| pos_pct <= t.spatial_pct);
-            if pos_drift > 2.0 && pos_pct <= 200.0 {
+            let x_pct = dx / viewport_w * 100.0;
+            let within_x = tol.as_ref().map_or(dx <= 4.0, |t| x_pct <= t.spatial_pct);
+            if dx > 2.0 {
                 diags.push(Diagnostic {
-                    severity: if within_pos { Severity::Info } else { Severity::Warning },
+                    severity: if within_x { Severity::Info } else { Severity::Warning },
                     message: format!(
-                        "SPACING: {} — {}:({},{}) {}:({},{}) ({:.0}dp={:.1}%vw{})",
+                        "X_OFFSET: {} — {}:x={} {}:x={} ({:.0}dp={:.1}%vw{})",
                         id,
                         src.platform,
                         m.src.bounds.x,
-                        m.src.bounds.y,
                         tgt.platform,
                         m.tgt.bounds.x,
-                        m.tgt.bounds.y,
-                        pos_drift,
-                        pos_pct,
-                        if within_pos { " within tolerance" } else { " VIOLATION" }
+                        dx,
+                        x_pct,
+                        if within_x { " within tolerance" } else { " VIOLATION" }
                     ),
                 });
             }
@@ -672,49 +676,16 @@ fn match_elements<'a>(
     (matches, unmatched_src, unmatched_tgt)
 }
 
-fn is_generated_container(e: &SemanticElement) -> bool {
+fn is_layout_wrapper(e: &SemanticElement, vw: f64, vh: f64) -> bool {
     if e.elem_type != "container" && e.elem_type != "view" {
         return false;
     }
     if e.content.is_some() {
         return false;
     }
-    let id = &e.id;
-    if id.is_empty() {
-        return false;
-    }
-    lazy_static_regex(id)
-}
-
-fn lazy_static_regex(id: &str) -> bool {
-    let lower = id.to_lowercase();
-    let prefixes = [
-        "linearlayout", "constraintlayout", "framelayout", "relativelayout",
-        "cardview", "recyclerview", "nestedscrollview", "scrollview",
-        "appbarlayout", "coordinatorlayout", "collapsingtoolbar",
-    ];
-    if !prefixes.iter().any(|p| lower.starts_with(p)) {
-        return false;
-    }
-    id.chars().any(|c| c == '_') && id.chars().any(|c| c.is_ascii_digit())
-}
-
-fn is_root_container(id: &str) -> bool {
-    const ROOT_IDS: &[&str] = &[
-        "decorview",
-        "framelayout",
-        "action_bar_root",
-        "content",
-        "coordinatorlayout",
-        "linearlayout_0_0",
-        "framelayout_0_0_0",
-        "framelayout_0_0_1",
-    ];
-    if id.is_empty() {
-        return false;
-    }
-    let lower = id.to_lowercase();
-    ROOT_IDS.iter().any(|r| lower.starts_with(r))
+    let w = e.bounds.w as f64;
+    let h = e.bounds.h as f64;
+    w > vw * 0.8 || h > vh * 0.8
 }
 
 fn colors_equal(a: &str, b: &str) -> bool {
