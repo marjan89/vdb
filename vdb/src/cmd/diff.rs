@@ -622,6 +622,39 @@ fn match_elements<'a>(
         }
     }
 
+    // Pass 3b: content match after stripping parenthesized counts
+    for (si, se) in src.iter().enumerate() {
+        if src_matched[si] {
+            continue;
+        }
+        let sc = match &se.content {
+            Some(c) => strip_dynamic_counts(&decode(c)).to_lowercase(),
+            None => continue,
+        };
+        if sc.len() < 3 {
+            continue;
+        }
+        for (ti, te) in tgt.iter().enumerate() {
+            if tgt_matched[ti] {
+                continue;
+            }
+            let tc = match &te.content {
+                Some(c) => strip_dynamic_counts(&decode(c)).to_lowercase(),
+                None => continue,
+            };
+            if sc == tc {
+                matches.push(Match {
+                    src: se,
+                    tgt: te,
+                    method: "content-stripped",
+                });
+                src_matched[si] = true;
+                tgt_matched[ti] = true;
+                break;
+            }
+        }
+    }
+
     // Pass 4: content containment — one text contains the other (case-insensitive, min 3 chars)
     for (si, se) in src.iter().enumerate() {
         if src_matched[si] {
@@ -782,4 +815,19 @@ fn decode(s: &str) -> String {
         .replace("&gt;", ">")
         .replace("&quot;", "\"")
         .replace("&apos;", "'")
+}
+
+fn strip_dynamic_counts(s: &str) -> String {
+    let mut result = s.to_string();
+    while let Some(start) = result.find('(') {
+        if let Some(end) = result[start..].find(')') {
+            let inner = &result[start + 1..start + end];
+            if inner.trim().chars().all(|c| c.is_ascii_digit() || c == ' ') {
+                result = format!("{}{}", result[..start].trim_end(), &result[start + end + 1..]);
+                continue;
+            }
+        }
+        break;
+    }
+    result.trim().to_string()
 }
