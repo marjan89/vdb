@@ -389,9 +389,11 @@ pub fn run(args: DiffArgs) -> Result<(), String> {
 
             let size_drift = dw.max(dh);
             let size_pct = size_drift / viewport_w * 100.0;
+            let ref_dim = m.src.bounds.w.max(m.src.bounds.h).max(1) as f64;
+            let rel_pct = size_drift / ref_dim * 100.0;
             let within_size =
                 tol.as_ref().map_or(size_drift <= 8.0, |t| size_pct <= t.spatial_pct);
-            if size_drift > 2.0 {
+            if size_drift > 2.0 && rel_pct <= 100.0 {
                 diags.push(Diagnostic {
                     severity: if within_size { Severity::Info } else { Severity::Warning },
                     message: format!(
