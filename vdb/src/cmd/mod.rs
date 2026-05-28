@@ -6,6 +6,7 @@ pub mod tolerance;
 mod tolerances_infer;
 mod validate;
 mod regions;
+mod matrix;
 mod validate_content;
 
 use clap::{Parser, Subcommand};
@@ -37,6 +38,8 @@ pub enum Command {
     /// Infer tolerance values from matched elements across YAMLs
     #[command(name = "tolerances-infer")]
     TolerancesInfer(tolerances_infer::TolerancesInferArgs),
+    /// Consolidated pass/fail matrix from TC run logs
+    Matrix(matrix::MatrixArgs),
 }
 
 pub fn run(cli: Cli) -> Result<(), String> {
@@ -49,5 +52,6 @@ pub fn run(cli: Cli) -> Result<(), String> {
         Command::ValidateContent(args) => validate_content::run(args),
         Command::Regions(args) => regions::run(args),
         Command::TolerancesInfer(args) => tolerances_infer::run(args),
+        Command::Matrix(args) => matrix::run(args),
     }
 }
