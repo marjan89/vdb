@@ -1,5 +1,6 @@
 mod compare;
 mod diff;
+mod element_matrix;
 mod overlay;
 mod render;
 pub mod tolerance;
@@ -40,6 +41,9 @@ pub enum Command {
     TolerancesInfer(tolerances_infer::TolerancesInferArgs),
     /// Consolidated pass/fail matrix from TC run logs
     Matrix(matrix::MatrixArgs),
+    /// Cross-platform semantic-element drift matrix (screens × platform-pairs)
+    #[command(name = "element-matrix")]
+    ElementMatrix(element_matrix::ElementMatrixArgs),
 }
 
 pub fn run(cli: Cli) -> Result<(), String> {
@@ -53,5 +57,6 @@ pub fn run(cli: Cli) -> Result<(), String> {
         Command::Regions(args) => regions::run(args),
         Command::TolerancesInfer(args) => tolerances_infer::run(args),
         Command::Matrix(args) => matrix::run(args),
+        Command::ElementMatrix(args) => element_matrix::run(args),
     }
 }
