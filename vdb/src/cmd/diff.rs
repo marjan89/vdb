@@ -31,16 +31,252 @@ struct Match<'a> {
     method: &'static str,
 }
 
-#[derive(Clone)]
-enum Severity {
-    Error,
-    Warning,
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub enum Severity {
     Info,
+    Warning,
+    Error,
 }
 
-struct Diagnostic {
-    severity: Severity,
-    message: String,
+pub struct Diagnostic {
+    pub severity: Severity,
+    pub message: String,
+}
+
+/// Aggregated diff outcome between two SemanticSchemas. Reusable from element-matrix.
+pub struct DiffReport {
+    pub matched: usize,
+    pub unmatched_source: usize,
+    pub unmatched_target: usize,
+    pub errors: Vec<String>,
+    pub warnings: Vec<String>,
+    pub infos: Vec<String>,
+}
+
+impl DiffReport {
+    pub fn worst_severity(&self) -> Option<Severity> {
+        if !self.errors.is_empty() {
+            Some(Severity::Error)
+        } else if !self.warnings.iter().any(|w| w.contains("VIOLATION") || !w.contains("within tolerance")) && self.warnings.is_empty() {
+            if self.infos.is_empty() { None } else { Some(Severity::Info) }
+        } else if self.warnings.iter().any(|w| w.contains("VIOLATION") || !w.contains("within tolerance")) {
+            Some(Severity::Warning)
+        } else if !self.infos.is_empty() {
+            Some(Severity::Info)
+        } else {
+            None
+        }
+    }
+
+    pub fn violation_count(&self) -> usize {
+        self.errors.len()
+            + self.warnings.iter().filter(|w| !w.contains("within tolerance")).count()
+    }
+}
+
+/// Compute a diff between two SemanticSchemas without printing or exiting.
+/// Reusable from element-matrix aggregation.
+pub fn diff_schemas(
+    src: &SemanticSchema,
+    tgt: &SemanticSchema,
+    tol: Option<&Tolerances>,
+    accessible_only: bool,
+) -> DiffReport {
+    let mut src = src.clone();
+    let mut tgt = tgt.clone();
+
+    let viewport_w = src
+        .viewport
+        .as_ref()
+        .map(|v| v.width as f64)
+        .or_else(|| tgt.viewport.as_ref().map(|v| v.width as f64))
+        .unwrap_or(400.0);
+    let viewport_h = src
+        .viewport
+        .as_ref()
+        .map(|v| v.height as f64)
+        .or_else(|| tgt.viewport.as_ref().map(|v| v.height as f64))
+        .unwrap_or(800.0);
+    let vw = viewport_w;
+    let vh = viewport_h;
+    src.elements.retain(|e| !is_layout_wrapper(e, vw, vh));
+    tgt.elements.retain(|e| !is_layout_wrapper(e, vw, vh));
+    if accessible_only {
+        src.elements.retain(|e| e.accessible == Some(true));
+        tgt.elements.retain(|e| e.accessible == Some(true));
+    }
+
+    let diags = compute_diagnostics(&src, &tgt, tol, viewport_w);
+    let (matches, unmatched_src, unmatched_tgt) =
+        match_elements(&src.elements, &tgt.elements);
+
+    let errors: Vec<String> = diags
+        .iter()
+        .filter(|d| matches!(d.severity, Severity::Error))
+        .map(|d| d.message.clone())
+        .collect();
+    let warnings: Vec<String> = diags
+        .iter()
+        .filter(|d| matches!(d.severity, Severity::Warning))
+        .map(|d| d.message.clone())
+        .collect();
+    let infos: Vec<String> = diags
+        .iter()
+        .filter(|d| matches!(d.severity, Severity::Info))
+        .map(|d| d.message.clone())
+        .collect();
+
+    DiffReport {
+        matched: matches.len(),
+        unmatched_source: unmatched_src.len(),
+        unmatched_target: unmatched_tgt.len(),
+        errors,
+        warnings,
+        infos,
+    }
+}
+
+/// Internal — computes diagnostics for two already-filtered schemas. Lifts the body
+/// of `run` that builds the diagnostic list, sharing it between CLI and element-matrix.
+fn compute_diagnostics(
+    src: &SemanticSchema,
+    tgt: &SemanticSchema,
+    tol: Option<&Tolerances>,
+    viewport_w: f64,
+) -> Vec<Diagnostic> {
+    let viewport_h = src.viewport.as_ref().map(|v| v.height as f64).unwrap_or(800.0);
+    let vw = viewport_w;
+    let vh = viewport_h;
+    let (matches, unmatched_src, unmatched_tgt) =
+        match_elements(&src.elements, &tgt.elements);
+    let mut diags: Vec<Diagnostic> = Vec::new();
+
+    for elem in &unmatched_src {
+        let label = elem
+            .content
+            .as_deref()
+            .unwrap_or(if elem.id.is_empty() { "(unnamed)" } else { &elem.id });
+        let id_part = if elem.id.is_empty() {
+            String::new()
+        } else {
+            format!(" ({}:{})", src.platform, elem.id)
+        };
+        diags.push(Diagnostic {
+            severity: Severity::Error,
+            message: format!(
+                "MISSING: \"{}\" {}{} — not found in {}",
+                decode(label),
+                elem.elem_type,
+                id_part,
+                tgt.platform
+            ),
+        });
+    }
+
+    for elem in &unmatched_tgt {
+        let label = elem
+            .content
+            .as_deref()
+            .unwrap_or(if elem.id.is_empty() { "(unnamed)" } else { &elem.id });
+        let id_part = if elem.id.is_empty() {
+            String::new()
+        } else {
+            format!(" ({}:{})", tgt.platform, elem.id)
+        };
+        diags.push(Diagnostic {
+            severity: Severity::Info,
+            message: format!(
+                "EXTRA: \"{}\" {} in {}{} — not in {}",
+                decode(label),
+                elem.elem_type,
+                tgt.platform,
+                id_part,
+                src.platform
+            ),
+        });
+    }
+
+    for m in &matches {
+        let id = if !m.src.id.is_empty() {
+            &m.src.id
+        } else {
+            m.src.content.as_deref().unwrap_or("(unnamed)")
+        };
+        let is_root = is_layout_wrapper(m.src, vw, vh) || is_layout_wrapper(m.tgt, vw, vh);
+
+        let sc = m.src.content.as_deref().map(decode);
+        let tc = m.tgt.content.as_deref().map(decode);
+        if sc != tc {
+            diags.push(Diagnostic {
+                severity: Severity::Error,
+                message: format!(
+                    "WRONG_TEXT: {} — {}:\"{}\" {}:\"{}\"",
+                    id, src.platform,
+                    sc.as_deref().unwrap_or("(none)"),
+                    tgt.platform,
+                    tc.as_deref().unwrap_or("(none)")
+                ),
+            });
+        }
+        if m.src.elem_type != m.tgt.elem_type {
+            diags.push(Diagnostic {
+                severity: Severity::Warning,
+                message: format!(
+                    "WRONG_TYPE: {} — {}:{} {}:{}",
+                    id, src.platform, m.src.elem_type, tgt.platform, m.tgt.elem_type
+                ),
+            });
+        }
+        let src_fg = m.src.foreground.as_ref().or(m.src.color.as_ref());
+        let tgt_fg = m.tgt.foreground.as_ref().or(m.tgt.color.as_ref());
+        if let (Some(sc), Some(tc)) = (src_fg, tgt_fg) {
+            if !colors_equal(sc, tc) {
+                let de = delta_e_cie2000(sc, tc);
+                let within = tol.map_or(false, |t| de <= t.color_delta_e);
+                diags.push(Diagnostic {
+                    severity: if within { Severity::Info } else { Severity::Warning },
+                    message: format!(
+                        "WRONG_COLOR: {} — {}:{} {}:{} (ΔE={:.1}{})",
+                        id, src.platform, sc, tgt.platform, tc, de,
+                        if within { " within tolerance" } else { " VIOLATION" }
+                    ),
+                });
+            }
+        }
+        if !is_root {
+            let dx = (m.src.bounds.x - m.tgt.bounds.x).abs() as f64;
+            let dw = (m.src.bounds.w - m.tgt.bounds.w).abs() as f64;
+            let dh = (m.src.bounds.h - m.tgt.bounds.h).abs() as f64;
+            let x_pct = dx / viewport_w * 100.0;
+            let within_x = tol.map_or(dx <= 4.0, |t| x_pct <= t.spatial_pct);
+            if dx > 2.0 {
+                diags.push(Diagnostic {
+                    severity: if within_x { Severity::Info } else { Severity::Warning },
+                    message: format!(
+                        "X_OFFSET: {} — Δ{:.0}dp={:.1}%vw{}",
+                        id, dx, x_pct,
+                        if within_x { " within tolerance" } else { " VIOLATION" }
+                    ),
+                });
+            }
+            let size_drift = dw.max(dh);
+            let size_pct = size_drift / viewport_w * 100.0;
+            let ref_dim = m.src.bounds.w.max(m.src.bounds.h).max(1) as f64;
+            let rel_pct = size_drift / ref_dim * 100.0;
+            let within_size = tol.map_or(size_drift <= 8.0, |t| size_pct <= t.spatial_pct);
+            if size_drift > 2.0 && rel_pct <= 100.0 {
+                diags.push(Diagnostic {
+                    severity: if within_size { Severity::Info } else { Severity::Warning },
+                    message: format!(
+                        "SIZE: {} — Δ{:.0}dp={:.1}%vw{}",
+                        id, size_drift, size_pct,
+                        if within_size { " within tolerance" } else { " VIOLATION" }
+                    ),
+                });
+            }
+        }
+    }
+    diags
 }
 
 pub fn run(args: DiffArgs) -> Result<(), String> {
