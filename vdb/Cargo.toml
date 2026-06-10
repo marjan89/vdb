@@ -2,7 +2,7 @@
 name = "vdb"
 version = "0.1.0"
 edition = "2024"
-description = "Visual Debug Bridge — semantic diff, render, and compare for QA schemas"
+description = "Visual Debug Bridge — semantic diff/render/overlay/validate + element-matrix N-way cross-platform drift grid (TD-62, ADR-010)"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
