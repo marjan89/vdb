@@ -6,7 +6,10 @@ Cross-platform semantic UI comparison and validation tool. Compares element tree
 
 ```sh
 cd vdb && cargo build --release
-cp target/release/vdb /opt/homebrew/bin/vdb
+# Use `install` (atomic tmp+rename) instead of `cp` — overwriting a
+# running binary can break macOS codesign cache and trigger SIGKILL
+# (TD-125).
+install -m 755 target/release/vdb /opt/homebrew/bin/vdb
 ```
 
 Requires: Rust 1.94+, macOS (uses system Helvetica for text rendering).
